@@ -9,7 +9,7 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { SyncStatus } from "@/components/SyncStatus";
 import { Button } from "@/components/ui/button";
-import { Github, Star, Search } from "lucide-react";
+import { Github, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAuth } from "@/lib/auth";
 import { useToast } from "@/components/ui/toast";
@@ -17,7 +17,6 @@ import { getRuntimePublicConfig, type RuntimePublicConfig } from "@/lib/runtime-
 
 // 子组件
 import { SyncProgressBar } from "./AppHeader/SyncProgressBar";
-import { OfflineBanner } from "./AppHeader/OfflineBanner";
 import { UserMenu } from "./AppHeader/UserMenu";
 import { SettingsDialog } from "./AppHeader/SettingsDialog";
 
@@ -146,9 +145,6 @@ export function AppHeader() {
       {/* 同步进度条 */}
       <SyncProgressBar step={syncStep} />
 
-      {/* 离线提示（仅客户端挂载后检测网络状态，避免 SSR/CSR 不一致） */}
-      {mounted && <OfflineBanner isOnline={navigator.onLine} />}
-
       {/* 主导航栏 */}
       <header
         className="glass sticky top-0 z-[45] w-full border-b border-[var(--border)]"
@@ -210,15 +206,15 @@ export function AppHeader() {
 
             <SyncStatus />
 
-            {/* GitHub Star 按钮 */}
+            {/* GitHub 仓库链接 */}
             <a
               href={`https://github.com/${runtimeConfig?.githubOwner || "wu529778790"}/${runtimeConfig?.githubRepo || "navhub.shenzjd.com"}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1.5 text-sm font-semibold text-[var(--foreground-secondary)] transition-colors hover:border-[var(--primary-300)] hover:text-[var(--primary-700)] sm:flex"
+              aria-label="GitHub 仓库"
+              className="hidden items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-secondary)] p-1.5 text-[var(--foreground-secondary)] transition-colors hover:border-[var(--primary-300)] hover:text-[var(--primary-700)] sm:flex"
             >
-              <Star className="h-4 w-4 text-[var(--accent-600)]" />
-              Star
+              <Github className="h-4 w-4" />
             </a>
 
             {/* 用户菜单或登录按钮 */}
