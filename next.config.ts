@@ -5,6 +5,10 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   output: "standalone",
+  experimental: {
+    // tree-shake 大体积图标/DnD 库的未使用导出，减少客户端 JS
+    optimizePackageImports: ["lucide-react", "@dnd-kit/core", "@dnd-kit/sortable"],
+  },
   async headers() {
     return [
       {

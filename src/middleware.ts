@@ -6,11 +6,9 @@ import { buildContentSecurityPolicy } from "@/lib/runtime-policies";
 export function middleware(request: NextRequest) {
   const response = NextResponse.next();
 
-  // HTML must not live in shared caches (CDN): `no-store` prevents Cloudflare and browsers
-  // from serving stale HTML that references chunks from a previous deployment.
-  // Hashed assets under `/_next/static/` stay long-cache/immutable (excluded by matcher).
-  response.headers.set("Cache-Control", "no-store");
-  // Set CSP here (not only in next.config headers) so prerender/route-cache cannot serve stale CSP.
+  // Cache-Control 不再由 middleware 写入 — 改由 next.config headers 统一管理
+  // （HTML：max-age=0, s-maxage=3600, stale-while-revalidate=86400）。
+  // 保留 CSP 在 middleware 写入，避免 prerender/route cache 复用旧 CSP。
   response.headers.set("Content-Security-Policy", buildContentSecurityPolicy());
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");

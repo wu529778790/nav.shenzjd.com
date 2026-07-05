@@ -12,6 +12,8 @@ export { EmptyState } from "./EmptyState";
 
 export { KeyboardShortcuts } from "./KeyboardShortcuts";
 
+export { HomeSkeleton } from "./HomeSkeleton";
+
 export { useFilteredCategories } from "./useFilteredCategories";
 
 export { useDragAndDrop } from "./useDragAndDrop";

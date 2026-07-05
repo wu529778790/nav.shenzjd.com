@@ -65,19 +65,21 @@ export function DataProvider({
   /** SSR 注入的种子数据；作为初始值避免首屏内容跳变（1条种子→N条本地数据） */
   initialSites?: Category[];
 }) {
-  // 首屏直接读 localStorage 同步初始化 —— 与 SSR 种子同来源时无缝衔接，
-  // 有本地缓存即关闭 loading，避免"种子→loading→数据"三段跳变。
+  // 首屏只读一次 localStorage，同步初始化 sites + loading —— 避免重复 I/O，
+  // 同时保持"有本地缓存即秒开、无本地缓存才 loading"的语义。
   const [sites, setSites] = useState<Category[]>(() => {
-    const local = getSitesFromLocalStorage();
-    if (local.length > 0) return local;
-    // 无本地缓存时回退到 SSR 种子（首次访客：首屏有内容可看）
+    const localData = loadFromLocalStorage();
+    if (isLocalDataValid(localData)) {
+      return localData!.categories;
+    }
+    // 无效或空 → 回退到 SSR 种子（首次访客：首屏有内容可看）
     if (initialSites.length > 0) return initialSites;
     return [];
   });
-  // 有本地缓存或 SSR 种子时，首屏不显示 skeleton（加载中）
+  // 只在上方同步分支判定为"无有效初始数据"时才 loading，首屏不闪 skeleton
   const [loading, setLoading] = useState(() => {
-    const local = loadFromLocalStorage();
-    return !isLocalDataValid(local) && initialSites.length === 0;
+    const localData = loadFromLocalStorage();
+    return !isLocalDataValid(localData) && initialSites.length === 0;
   });
   const [error, setError] = useState<string | null>(null);
   const { showToast } = useToast();

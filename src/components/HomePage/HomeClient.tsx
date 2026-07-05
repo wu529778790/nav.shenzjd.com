@@ -29,6 +29,7 @@ import {
   CategoryManager,
   ActionBar,
   EmptyState,
+  HomeSkeleton,
   KeyboardShortcuts,
   useFilteredCategories,
   useDragAndDrop,
@@ -96,6 +97,17 @@ export default function HomeClient() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isGuestMode]);
+
+  // 首屏加载（无本地缓存、无数据）时展示 skeleton，避免闪出 EmptyState
+  if (loading && categories.length === 0) {
+    return (
+      <AppLayout>
+        <PageContainer>
+          <HomeSkeleton />
+        </PageContainer>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>
