@@ -13,21 +13,13 @@ import { Github, Star, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearAuth } from "@/lib/auth";
 import { useToast } from "@/components/ui/toast";
-import type { RuntimePublicConfig } from "@/lib/runtime-public-config";
+import { getRuntimePublicConfig, type RuntimePublicConfig } from "@/lib/runtime-public-config";
 
 // 子组件
 import { SyncProgressBar } from "./AppHeader/SyncProgressBar";
 import { OfflineBanner } from "./AppHeader/OfflineBanner";
 import { UserMenu } from "./AppHeader/UserMenu";
 import { SettingsDialog } from "./AppHeader/SettingsDialog";
-
-// NEXT_PUBLIC_* 在构建时内联，模块顶层读取一次即可（无需 useEffect）
-const RUNTIME_PUBLIC_CONFIG: RuntimePublicConfig = {
-  githubClientId: process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || "",
-  githubOwner: process.env.NEXT_PUBLIC_GITHUB_OWNER || "wu529778790",
-  githubRepo: process.env.NEXT_PUBLIC_GITHUB_REPO || "navhub.shenzjd.com",
-  dataFilePath: process.env.NEXT_PUBLIC_DATA_FILE_PATH || "data/sites.json",
-};
 
 export function AppHeader() {
   const { authUser } = useAuth();
@@ -56,7 +48,9 @@ export function AppHeader() {
 
   // 状态管理
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [runtimeConfig] = useState<RuntimePublicConfig>(RUNTIME_PUBLIC_CONFIG);
+  const [githubClientId, setGithubClientId] = useState("");
+  const [runtimeConfigLoaded, setRuntimeConfigLoaded] = useState(false);
+  const [runtimeConfig, setRuntimeConfig] = useState<RuntimePublicConfig | null>(null);
 
   // mounted 保护: 避免 SSR hydration mismatch
   const [mounted, setMounted] = useState(false);
@@ -65,22 +59,31 @@ export function AppHeader() {
     setMounted(true);
   }, []);
 
-  // 处理 OAuth 回调后的 toast + 触发 auth 重拉
+  // 初始化运行时配置
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const oauthError = params.get("oauth_error");
-    const oauthSuccess = params.get("oauth_success");
+    void (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const oauthError = params.get("oauth_error");
+      const oauthSuccess = params.get("oauth_success");
 
-    if (oauthError) {
-      showToast(`登录失败: ${oauthError}`, "error");
-      window.history.replaceState({}, "", window.location.pathname);
-    }
+      if (oauthError) {
+        showToast(`登录失败: ${oauthError}`, "error");
+        window.history.replaceState({}, "", window.location.pathname);
+      }
 
-    if (oauthSuccess) {
-      showToast("登录成功", "success");
-      window.history.replaceState({}, "", window.location.pathname);
-      window.dispatchEvent(new Event("auth-update"));
-    }
+      const loadedRuntimeConfig = await getRuntimePublicConfig().catch(() => null);
+      if (loadedRuntimeConfig) {
+        setRuntimeConfig(loadedRuntimeConfig);
+        setGithubClientId(loadedRuntimeConfig.githubClientId);
+      }
+      setRuntimeConfigLoaded(true);
+
+      if (oauthSuccess) {
+        showToast("登录成功", "success");
+        window.history.replaceState({}, "", window.location.pathname);
+        window.dispatchEvent(new Event("auth-update"));
+      }
+    })();
   }, [showToast]);
 
   // 监听 open-settings 事件
@@ -102,13 +105,27 @@ export function AppHeader() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
-  const handleGitHubLogin = () => {
-    // runtimeConfig 已在 useEffect 中同步设置，clientId 立即可用
-    const clientId = runtimeConfig?.githubClientId;
+  const handleGitHubLogin = async () => {
+    let clientId = githubClientId;
+    if (!clientId) {
+      const loadedRuntimeConfig = await getRuntimePublicConfig().catch(() => null);
+      if (!loadedRuntimeConfig) {
+        setRuntimeConfigLoaded(true);
+        showToast("运行时配置加载失败，请稍后重试", "error");
+        return;
+      }
+
+      setRuntimeConfig(loadedRuntimeConfig);
+      clientId = loadedRuntimeConfig.githubClientId;
+      setGithubClientId(loadedRuntimeConfig.githubClientId);
+      setRuntimeConfigLoaded(true);
+    }
+
     if (!clientId) {
       showToast("请配置 NEXT_PUBLIC_GITHUB_CLIENT_ID 环境变量", "error");
       return;
     }
+
     // 直接跳转 GitHub OAuth，不做前置确认弹窗
     window.location.href = "/api/auth/github/login";
   };
@@ -215,7 +232,8 @@ export function AppHeader() {
             ) : (
               <Button
                 size="sm"
-                onClick={handleGitHubLogin}
+                onClick={() => void handleGitHubLogin()}
+                disabled={!runtimeConfigLoaded && !githubClientId}
                 className="gap-2 shadow-md transition-all hover:shadow-lg"
               >
                 <Github className="h-4 w-4" />

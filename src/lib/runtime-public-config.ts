@@ -21,12 +21,16 @@ export function getServerRuntimePublicConfig(): RuntimePublicConfig {
 }
 
 let runtimeConfigCache: RuntimePublicConfig | null = null;
+let runtimeConfigPromise: Promise<RuntimePublicConfig> | null = null;
 
 /**
- * 读取运行时公开配置（githubClientId / owner / repo / dataFilePath）。
+ * 读取运行时公开配置。
  *
- * 客户端直接读 NEXT_PUBLIC_* 环境变量（构建时内联，零网络请求）；
- * 服务端读 process.env。两种路径都走相同兜底值，默认行为一致。
+ * 客户端走 /api/runtime-config 拉取，服务端 API 在运行时读取 process.env ——
+ * 这让 Docker 部署可以在容器启动时通过环境变量注入 NEXT_PUBLIC_*，
+ * 无需重新构建镜像。
+ *
+ * 模块级缓存保证整个页面生命周期只发一次请求。
  */
 export async function getRuntimePublicConfig(): Promise<RuntimePublicConfig> {
   // 服务端：直接读 process.env
@@ -34,18 +38,33 @@ export async function getRuntimePublicConfig(): Promise<RuntimePublicConfig> {
     return getServerRuntimePublicConfig();
   }
 
-  // 客户端：NEXT_PUBLIC_* 在构建时已内联，直接同步读取，无 HTTP 请求
+  // 客户端命中缓存
   if (runtimeConfigCache) {
     return runtimeConfigCache;
   }
 
-  const config: RuntimePublicConfig = {
-    githubClientId: process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || "",
-    githubOwner: process.env.NEXT_PUBLIC_GITHUB_OWNER || "wu529778790",
-    githubRepo: process.env.NEXT_PUBLIC_GITHUB_REPO || "navhub.shenzjd.com",
-    dataFilePath: process.env.NEXT_PUBLIC_DATA_FILE_PATH || "data/sites.json",
-  };
+  // 去重：同一次页面生命周期只发一个请求
+  if (!runtimeConfigPromise) {
+    runtimeConfigPromise = fetch("/api/runtime-config", {
+      method: "GET",
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("获取运行时配置失败");
+        }
 
-  runtimeConfigCache = config;
-  return config;
+        return (await response.json()) as RuntimePublicConfig;
+      })
+      .then((config) => {
+        runtimeConfigCache = config;
+        return config;
+      })
+      .finally(() => {
+        runtimeConfigPromise = null;
+      });
+  }
+
+  return runtimeConfigPromise;
 }
