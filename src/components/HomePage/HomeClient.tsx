@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useAuth } from "@/contexts/SitesContext";
 import {
   useSitesData,
@@ -22,7 +22,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { SearchStatus } from "@/components/SearchBar";
 import { CategoryTabBar } from "@/components/CategoryTabBar";
 import { ImportExportDialog } from "@/components/ImportExportDialog";
-import { SortableCategoryItem } from "@/components/SortableCategoryItem";
+import { StaticBoard } from "@/components/HomePage/StaticBoard";
 
 // 导入拆分后的子组件和 Hooks
 import {
@@ -32,16 +32,14 @@ import {
   HomeSkeleton,
   KeyboardShortcuts,
   useFilteredCategories,
-  useDragAndDrop,
 } from "@/components/HomePage";
 
-// DnD 相关导入
-import { DndContext, closestCenter } from "@dnd-kit/core";
-import {
-  SortableContext,
-  rectSortingStrategy,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+// 拖拽板（含 dnd-kit）按需懒加载，避免把 @dnd-kit 拉入首页首屏关键 JS
+const SortableBoard = lazy(() =>
+  import("@/components/HomePage/SortableBoard").then((m) => ({
+    default: m.SortableBoard,
+  }))
+);
 
 export default function HomeClient() {
   // ✨ 优化：精准订阅，减少不必要的重渲染
@@ -65,13 +63,6 @@ export default function HomeClient() {
   // 使用搜索过滤 Hook
   const { searchQuery, setSearchQuery, filteredCategories, searchResultsCount } =
     useFilteredCategories(categories);
-
-  // 使用拖拽排序 Hook
-  const { sensors, handleDragEnd, allSiteIds } = useDragAndDrop({
-    categories,
-    filteredCategories,
-    onUpdateSites: updateSites,
-  });
 
   // 全局快捷键处理
   useEffect(() => {
@@ -146,46 +137,23 @@ export default function HomeClient() {
 
         {/* ========== 主内容区 ========== */}
         {filteredCategories.length > 0 ? (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
+          <Suspense
+            fallback={
+              <StaticBoard
+                categories={filteredCategories}
+                viewMode={viewMode}
+                isGuestMode={isGuestMode}
+              />
+            }
           >
-            <SortableContext
-              items={[
-                ...filteredCategories.map((c) => c.id),
-                ...allSiteIds,
-              ]}
-              strategy={
-                viewMode === "grid"
-                  ? rectSortingStrategy
-                  : verticalListSortingStrategy
-              }
-            >
-              <div className="space-y-4">
-                {filteredCategories.map((category) => (
-                  <SortableCategoryItem
-                    key={category.id}
-                    category={category}
-                    onEdit={(cat) =>
-                      window.dispatchEvent(
-                        new CustomEvent("edit-category", { detail: cat })
-                      )
-                    }
-                    onDelete={() =>
-                      window.dispatchEvent(
-                        new CustomEvent("delete-category", {
-                          detail: category.id,
-                        })
-                      )
-                    }
-                    isGuestMode={isGuestMode}
-                    viewMode={viewMode}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
+            <SortableBoard
+              categories={categories}
+              filteredCategories={filteredCategories}
+              viewMode={viewMode}
+              isGuestMode={isGuestMode}
+              onUpdateSites={updateSites}
+            />
+          </Suspense>
         ) : (
           <EmptyState
             searchQuery={searchQuery}
