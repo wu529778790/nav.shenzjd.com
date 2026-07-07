@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import type { Category } from "@/lib/storage/local-storage";
+import { visibleCategories } from "@/lib/utils/tombstone";
 
 interface UseFilteredCategoriesResult {
   searchQuery: string;
@@ -60,7 +61,8 @@ export function useFilteredCategories(
       result = filtered;
     }
 
-    return result;
+    // 过滤墓碑条目：删除的站点 / 分类不在界面出现，但删除事实仍保留在数据里供同步
+    return visibleCategories(result);
   }, [categories, searchQuery]);
 
   // 计算搜索结果数量

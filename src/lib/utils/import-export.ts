@@ -4,12 +4,14 @@
  */
 
 import type { NavData, Category } from "@/lib/storage/local-storage";
+import { visibleCategories } from "@/lib/utils/tombstone";
 
 /**
  * 导出为 JSON 格式
  */
 export function exportToJSON(data: NavData): string {
-  return JSON.stringify(data, null, 2);
+  // 导出备份时剥离墓碑，保留干净数据
+  return JSON.stringify({ ...data, categories: visibleCategories(data.categories) }, null, 2);
 }
 
 /**
@@ -63,7 +65,7 @@ export function exportToOPML(data: NavData): string {
     '<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n<head>\n<title>NavHub Export</title>\n</head>\n<body>\n';
   const xmlFooter = "</body>\n</opml>";
 
-  const outlines = data.categories
+  const outlines = visibleCategories(data.categories)
     .map((category) => {
       const categoryOutline = `<outline text="${escapeXml(category.name)}" title="${escapeXml(category.name)}">\n`;
       const siteOutlines = category.sites

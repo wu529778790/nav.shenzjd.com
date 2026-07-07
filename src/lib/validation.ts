@@ -164,6 +164,8 @@ export const siteSchema = z.object({
   sort: z.number().optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
+  _deleted: z.boolean().optional(),
+  deletedAt: z.string().optional(),
 });
 
 /**
@@ -175,4 +177,6 @@ export const categorySchema = z.object({
   icon: z.string().optional(),
   sort: z.number(),
   sites: z.array(siteSchema).default([]),
+  _deleted: z.boolean().optional(),
+  deletedAt: z.string().optional(),
 });

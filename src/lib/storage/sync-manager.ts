@@ -15,6 +15,7 @@ import {
   getLastSyncedFingerprint,
 } from "./local-storage";
 import { saveDataToGitHub, getDataFromGitHub } from "./github-storage";
+import { mergeNavData } from "./merge";
 import { STORAGE_CONFIG, SYNC_CONFIG } from "@/lib/config";
 import type { NavData, SyncResult, SyncStep, SyncStepInfo } from "@/types";
 import { SyncStatus } from "@/types";
@@ -570,33 +571,44 @@ export class SyncManager {
         );
       }
 
-      const conflictError = getSyncConflictError(data, githubData);
-      if (conflictError) {
-        throw new SyncConflictError(conflictError);
+      // 字段级合并（pull-before-push）：
+      // 取代原先「整文件比较 → 冲突即死锁」的逻辑。无论是否存在版本号记录，
+      // 都先把远端拉下来与本地合并，再整体回写两端。多设备各自新增不同站点
+      // / 分类会自动合并，同 id 站点按 updatedAt last-writer-wins，从根本上消除
+      // 「冲突死锁」与「静默覆盖」两类数据风险。
+      const commitMessage = `[skip ci] Auto sync ${new Date().toISOString()}`;
+      const newVersion = incrementDataVersion();
+      const remoteVersion = (githubData as unknown as { _version?: number })._version;
+
+      if (githubData) {
+        const { merged, overlaps } = mergeNavData(data, githubData);
+        if (overlaps.length > 0) {
+          console.info(
+            `[SyncManager] 合并发现 ${overlaps.length} 处同 id 站点两端都改过，已按 updatedAt 取较新一方：${overlaps.join(", ")}`,
+          );
+        }
+        merged._version = Math.max(newVersion, remoteVersion ?? 0);
+        saveSyncVersion({ localVersion: newVersion, remoteVersion: remoteVersion ?? newVersion });
+
+        // 写回本地 + 上传合并结果
+        saveToLocalStorage(merged);
+        await saveDataToGitHub(liveToken, merged, commitMessage);
+        setLastSyncTime(merged);
+      } else {
+        // 远端无数据（首次推送 / fork 尚未就绪 / 404）→ 直接上传本地
+        const dataWithVersion = { ...data, _version: newVersion } as NavData;
+        await saveDataToGitHub(liveToken, dataWithVersion, commitMessage);
+        saveSyncVersion({ localVersion: newVersion, remoteVersion: newVersion });
+        setLastSyncTime(data);
       }
 
-      // 尝试同步到 GitHub
-      await saveDataToGitHub(
-        liveToken,
-        data,
-        `[skip ci] Auto sync ${new Date().toISOString()}`
-      );
-
-      // 更新最后同步时间
-      setLastSyncTime(data);
       this.retryCountMap.clear();
-
       this.updateStatus(SyncStatus.IDLE);
       this.options.onSuccess?.();
     } catch (error) {
       console.error("❌ 同步失败:", error);
       this.updateStatus(SyncStatus.ERROR);
       this.options.onError?.(error as Error);
-
-      if (error instanceof SyncConflictError) {
-        return;
-      }
-
       this.retrySync(data);
     } finally {
       this.isSyncing = false;

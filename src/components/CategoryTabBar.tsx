@@ -9,15 +9,17 @@
 import { cn } from "@/lib/utils";
 import { useActiveCategory } from "@/hooks/use-active-category";
 import type { Category } from "@/lib/storage/local-storage";
+import { visibleCategories } from "@/lib/utils/tombstone";
 
 interface CategoryTabBarProps {
   categories: Category[];
 }
 
 export function CategoryTabBar({ categories }: CategoryTabBarProps) {
-  const activeId = useActiveCategory(categories);
+  const visible = visibleCategories(categories);
+  const activeId = useActiveCategory(visible);
 
-  if (categories.length === 0) return null;
+  if (visible.length === 0) return null;
 
   const handleClick = (categoryId: string) => {
     const el = document.getElementById(`category-${categoryId}`);
@@ -32,7 +34,7 @@ export function CategoryTabBar({ categories }: CategoryTabBarProps) {
   return (
     <nav aria-label="分类导航" className="min-w-0">
       <div className="-mx-1 flex gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {categories.map((cat) => {
+        {visible.map((cat) => {
           const isActive = activeId === cat.id;
           return (
             <button

@@ -13,6 +13,10 @@ export interface Site {
   sort?: number;
   createdAt?: string;
   updatedAt?: string;
+  /** 墓碑标记：删除时不真删，而是打标，让删除跨设备传播 */
+  _deleted?: boolean;
+  /** 删除时间（ISO 字符串），用于合并时取较新的删除事实 */
+  deletedAt?: string;
 }
 
 /** 分类 */
@@ -22,6 +26,9 @@ export interface Category {
   icon?: string;
   sort: number;
   sites: Site[];
+  /** 墓碑标记：分类级删除同样需要跨设备传播 */
+  _deleted?: boolean;
+  deletedAt?: string;
 }
 
 /** 导航数据根结构 */

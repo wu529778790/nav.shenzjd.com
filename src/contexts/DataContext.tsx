@@ -293,11 +293,18 @@ export function DataProvider({
         return;
       }
 
-      // 乐观更新：立即从UI移除
+      // 乐观更新：打墓碑标记（不真删），让删除能跨设备传播
       setSites((prevSites) => {
         const newSites = prevSites.map((category) =>
           category.id === categoryId
-            ? { ...category, sites: category.sites.filter((s) => s.id !== siteId) }
+            ? {
+                ...category,
+                sites: category.sites.map((s) =>
+                  s.id === siteId
+                    ? { ...s, _deleted: true, deletedAt: new Date().toISOString() }
+                    : s
+                ),
+              }
             : category
         );
         saveSitesToLocalStorage(newSites);
@@ -362,9 +369,13 @@ export function DataProvider({
         return;
       }
 
-      // 乐观更新
+      // 乐观更新：打墓碑标记（不真删），让分类删除也能跨设备传播
       setSites((prevSites) => {
-        const newSites = prevSites.filter((c) => c.id !== categoryId);
+        const newSites = prevSites.map((c) =>
+          c.id === categoryId
+            ? { ...c, _deleted: true, deletedAt: new Date().toISOString() }
+            : c
+        );
         saveSitesToLocalStorage(newSites);
         return newSites;
       });

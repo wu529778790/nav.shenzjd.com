@@ -9,15 +9,17 @@
 import { cn } from "@/lib/utils";
 import { useActiveCategory } from "@/hooks/use-active-category";
 import type { Category } from "@/lib/storage/local-storage";
+import { visibleCategories } from "@/lib/utils/tombstone";
 
 interface MobileCategoryNavProps {
   categories: Category[];
 }
 
 export function MobileCategoryNav({ categories }: MobileCategoryNavProps) {
-  const activeId = useActiveCategory(categories);
+  const visible = visibleCategories(categories);
+  const activeId = useActiveCategory(visible);
 
-  if (categories.length === 0) return null;
+  if (visible.length === 0) return null;
 
   const handleClick = (categoryId: string) => {
     const el = document.getElementById(`category-${categoryId}`);
@@ -32,7 +34,7 @@ export function MobileCategoryNav({ categories }: MobileCategoryNavProps) {
   return (
     <nav aria-label="分类导航" className="lg:hidden">
       <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {categories.map((cat) => {
+        {visible.map((cat) => {
           const isActive = activeId === cat.id;
           return (
             <button
