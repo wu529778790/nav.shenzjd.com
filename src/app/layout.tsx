@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { SitesProvider } from "@/contexts/SitesContext";
@@ -9,12 +9,13 @@ import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { NavLogoutCleanup } from "@/components/NavLogoutCleanup";
 
-// Plus Jakarta Sans：4 个字重按需加载，display=optional 避免阻塞首屏渲染
-export const plusJakarta = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "optional",
+// Plus Jakarta Sans（可变字体，自托管于 src/fonts，避免构建期依赖 Google Fonts）
+// display=optional 避免阻塞首屏渲染；preload 让字体随首屏关键资源一起加载。
+export const plusJakarta = localFont({
+  src: "../fonts/plus-jakarta-sans-latin-wght-normal.woff2",
   variable: "--font-plus-jakarta",
+  display: "optional",
+  preload: true,
 });
 
 export const metadata: Metadata = {

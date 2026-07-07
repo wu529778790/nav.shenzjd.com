@@ -151,7 +151,7 @@
   --shadow-lg: var(--shadow-lg);
   --shadow-xl: var(--shadow-xl);
 
-  --font-sans: var(--font-plus-jakarta), "Segoe UI", system-ui, sans-serif;
+  --font-sans: var(--font-plus-jakarta), "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
 }
 
 @layer base {
@@ -161,7 +161,7 @@
 
   body {
     @apply min-h-screen bg-[var(--background)] text-[var(--foreground)] antialiased;
-    font-family: var(--font-plus-jakarta), "Segoe UI", system-ui, sans-serif;
+    font-family: var(--font-plus-jakarta), "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
     /* 浅色纸感背景：顶部白色柔光 + 微弱品牌色点 */
     background-image:
       linear-gradient(180deg, rgb(255 255 255 / 0.7), transparent 220px),
@@ -176,7 +176,7 @@
   h2,
   h3,
   h4 {
-    font-family: var(--font-plus-jakarta), "Segoe UI", system-ui, sans-serif;
+    font-family: var(--font-plus-jakarta), "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
     letter-spacing: -0.02em;
   }
 
