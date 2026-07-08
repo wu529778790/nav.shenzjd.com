@@ -14,46 +14,49 @@ afterEach(() => {
   cleanup();
 });
 
-// Mock localStorage
-const localStorageMock = (() => {
-  let store: Record<string, string> = {};
+// Mock localStorage / sessionStorage
+// 仅在 jsdom（有 window）环境注入；node 环境下 window 不存在，跳过以支持
+// 模拟 SSR（无 window）的测试用例。
+if (typeof window !== "undefined") {
+  const localStorageMock = (() => {
+    let store: Record<string, string> = {};
 
-  return {
-    getItem: (key: string) => store[key] || null,
-    setItem: (key: string, value: string) => {
-      store[key] = value.toString();
-    },
-    removeItem: (key: string) => {
-      delete store[key];
-    },
-    clear: () => {
-      store = {};
-    },
-  };
-})();
+    return {
+      getItem: (key: string) => store[key] || null,
+      setItem: (key: string, value: string) => {
+        store[key] = value.toString();
+      },
+      removeItem: (key: string) => {
+        delete store[key];
+      },
+      clear: () => {
+        store = {};
+      },
+    };
+  })();
 
-Object.defineProperty(window, "localStorage", {
-  value: localStorageMock,
-});
+  Object.defineProperty(window, "localStorage", {
+    value: localStorageMock,
+  });
 
-// Mock sessionStorage
-const sessionStorageMock = (() => {
-  let store: Record<string, string> = {};
+  const sessionStorageMock = (() => {
+    let store: Record<string, string> = {};
 
-  return {
-    getItem: (key: string) => store[key] || null,
-    setItem: (key: string, value: string) => {
-      store[key] = value.toString();
-    },
-    removeItem: (key: string) => {
-      delete store[key];
-    },
-    clear: () => {
-      store = {};
-    },
-  };
-})();
+    return {
+      getItem: (key: string) => store[key] || null,
+      setItem: (key: string, value: string) => {
+        store[key] = value.toString();
+      },
+      removeItem: (key: string) => {
+        delete store[key];
+      },
+      clear: () => {
+        store = {};
+      },
+    };
+  })();
 
-Object.defineProperty(window, "sessionStorage", {
-  value: sessionStorageMock,
-});
+  Object.defineProperty(window, "sessionStorage", {
+    value: sessionStorageMock,
+  });
+}

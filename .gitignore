@@ -29,6 +29,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# 从服务器下载的诊断日志（放在 data/ 下，勿提交）
+/data/*.log
+
 # env files (can opt-in for committing if needed)
 .env
 .env.local

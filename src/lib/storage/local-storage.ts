@@ -12,6 +12,18 @@ const LAST_SYNC_FINGERPRINT_KEY = "nav_last_sync_fingerprint";
 const EXPIRY_KEY = "nav_expiry";
 const CACHE_DURATION = STORAGE_CONFIG.CACHE_DURATION;
 
+/**
+ * 是否处于可访问 localStorage 的环境（浏览器）。
+ *
+ * SSR 期间 window / localStorage 不存在。DataContext 的 useState 初始化器
+ * 会在服务端执行并调用 loadFromLocalStorage，若直接访问 localStorage 会抛
+ * ReferenceError 并被 catch 成 console.error —— 每次首页请求刷 2 条错误日志。
+ * 此守卫让服务端静默返回，消除日志噪音。
+ */
+function hasLocalStorage(): boolean {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+}
+
 // 类型已统一导出至 @/types，此处 re-export 以保持向后兼容
 export type { Site, Category, NavData } from "@/types";
 
@@ -19,6 +31,7 @@ export type { Site, Category, NavData } from "@/types";
  * 保存数据到 localStorage
  */
 export function saveToLocalStorage(data: NavData): void {
+  if (!hasLocalStorage()) return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     localStorage.setItem(EXPIRY_KEY, (Date.now() + CACHE_DURATION).toString());
@@ -32,6 +45,8 @@ export function saveToLocalStorage(data: NavData): void {
  * 从 localStorage 读取数据
  */
 export function loadFromLocalStorage(): NavData | null {
+  // SSR 期间静默返回 null（见上方 hasLocalStorage 注释），不打错误日志
+  if (!hasLocalStorage()) return null;
   try {
     const expiry = localStorage.getItem(EXPIRY_KEY);
     if (!expiry) return null;
@@ -53,6 +68,7 @@ export function loadFromLocalStorage(): NavData | null {
  * 清除 localStorage 数据（别名，保留向后兼容）
  */
 export function clearLocalStorage(): void {
+  if (!hasLocalStorage()) return;
   try {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(LAST_SYNC_KEY);
@@ -72,6 +88,7 @@ export function clearLocalStorage(): void {
  * 仅操作 nav_ 前缀的 key，避免影响其他应用级缓存（如主题）。
  */
 export function clearAllNavLocalStorage(): void {
+  if (!hasLocalStorage()) return;
   try {
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -157,6 +174,7 @@ export function getLastSyncTime(): Date | null {
  * 设置最后同步时间
  */
 export function setLastSyncTime(data?: NavData): void {
+  if (!hasLocalStorage()) return;
   try {
     localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
     const fingerprint = data ? getDataFingerprint(data) : null;
