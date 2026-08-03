@@ -152,14 +152,21 @@ export function DataProvider({
                 // 成功后前端自动第二次 fetchSites 拿到数据。
                 if (!autoForkTriggeredRef.current) {
                   autoForkTriggeredRef.current = true;
+                  // 无论本地是否有数据都要确保 fork 被创建。
+                  // 之前用 `if (local)` 守卫：登录但本地为空的用户
+                  // （访客阶段不持久化 / 清过缓存 / 新浏览器）会跳过分支，
+                  // 导致 fork 永不创建、每次加载都去 GitHub 打 404（见 data/*.log）。
                   const local = loadFromLocalStorage();
-                  if (local) {
-                    console.info(
-                      "[DataContext] fork 不存在，自动触发首次写操作（immediate）",
-                    );
-                    showToast("正在为您初始化 GitHub 仓库，请稍候...", "info", 8000);
-                    scheduleSync(local, true);
-                  }
+                  const payload: NavData = local ?? {
+                    version: "1.0",
+                    lastModified: 0,
+                    categories: [],
+                  };
+                  console.info(
+                    "[DataContext] fork 不存在，自动触发首次写操作（immediate）以创建仓库",
+                  );
+                  showToast("正在为您初始化 GitHub 仓库，请稍候...", "info", 8000);
+                  scheduleSync(payload, true);
                 } else {
                   // 自动触发已经执行过一次仍失败 → 提示稍后重试
                   console.warn("[DataContext] 自动 fork 已执行但仍 fork-not-created，跳过重复触发");

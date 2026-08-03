@@ -48,7 +48,11 @@ async function fetchFavicon(target: URL): Promise<Response> {
         Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
       },
-      cache: "force-cache",
+      // 不用 Next 的 fetch cache：外站 favicon 可能长时间无响应/超时，
+      // 若启用 cache 会让 Next 在超时时尝试写入 data cache 失败并打
+      // "Failed to set fetch cache" 噪音（见 data/*.log）。响应本身已带
+      // 1 天 Cache-Control，浏览器/CDN 侧缓存足够。
+      cache: "no-store",
     },
     { maxRedirects: 2 }
   );
