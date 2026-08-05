@@ -1,6 +1,6 @@
-# NavHub · 个人导航站
+# NavHub · 导航站
 
-> 一个简单的个人导航 / 书签管理网站。书签数据存放在**你自己的 GitHub 仓库**里——登录后自动同步，断网也能用，支持拖拽排序，数据随时可 clone、可迁移。
+> 一个简单的导航 / 书签管理网站。书签数据存放在**你自己的 GitHub 仓库**里——登录后自动同步，断网也能用，支持拖拽排序，数据随时可 clone、可迁移。
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js) ![React](https://img.shields.io/badge/React-19-61dafb?logo=react) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript) ![Tailwind CSS v4](https://img.shields.io/badge/Tailwind_CSS-v4-38bdf8?logo=tailwindcss) ![License](https://img.shields.io/badge/License-MIT-green) ![CI](https://img.shields.io/github/actions/workflow/status/wu529778790/navhub.shenzjd.com/docker.yml)
 
