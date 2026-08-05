@@ -1,14 +1,14 @@
 # NavHub · 个人导航站
 
-> 一个把「数据主权」还给用户的个人导航 / 书签管理网站。所有书签数据存放在**你自己的 GitHub 仓库**中——双向同步、离线可用、拖拽排序，数据随时可 clone、可审计、可迁移。
+> 一个简单的个人导航 / 书签管理网站。书签数据存放在**你自己的 GitHub 仓库**里——登录后自动同步，断网也能用，支持拖拽排序，数据随时可 clone、可迁移。
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js) ![React](https://img.shields.io/badge/React-19-61dafb?logo=react) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript) ![Tailwind CSS v4](https://img.shields.io/badge/Tailwind_CSS-v4-38bdf8?logo=tailwindcss) ![License](https://img.shields.io/badge/License-MIT-green) ![CI](https://img.shields.io/github/actions/workflow/status/wu529778790/navhub.shenzjd.com/docker.yml)
 
-## 为什么用 GitHub 当存储？
+## 为什么把数据放在你自己的 GitHub 仓库？
 
 传统导航站把数据存在服务商数据库里，换产品 / 关服务，数据就没了。NavHub 反其道而行：把 `data/sites.json` 存在**你自己的 GitHub 仓库**里。
 
-- **数据自主** — 你的书签就是一份普通 JSON + 完整 Git 历史，随时 clone、审计、迁移到任何地方
+- **数据是自己的** — 书签就是一份普通 JSON + 完整 Git 历史，随时 clone、审计、迁移到任何地方
 - **私有可控** — 登录后自动 Fork 一个仓库，数据不经任何第三方数据库
 - **可回溯** — 每一次同步都是一次 Git 提交，误删可恢复，冲突不丢失
 
