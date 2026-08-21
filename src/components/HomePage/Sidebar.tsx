@@ -13,6 +13,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { formatTopCategoryName } from "@/lib/format";
 import type { Category, Site } from "@/types";
 
 /* ============ 图标 ============ */
@@ -49,12 +50,7 @@ export function LinkIcon({ className }: { className?: string }) {
       className={className}
       aria-hidden
     >
-      <path
-        d="M10 14L14 10"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
+      <path d="M10 14L14 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <path
         d="M11 6.5L14 3.5C15.5 2 18 2 19.5 3.5C21 5 21 7.5 19.5 9L16.5 12"
         stroke="currentColor"
@@ -98,6 +94,7 @@ function CategoryRow({
   onToggle,
   onSelect,
   showSites,
+  topIndex,
 }: {
   node: Category;
   depth: number;
@@ -107,6 +104,8 @@ function CategoryRow({
   onSelect: (id: string) => void;
   /** 是否展示站点叶子链接：PC 端右侧已展示 → false；移动端无右侧 → true */
   showSites: boolean;
+  /** 顶级分类在顶级数组中的下标（0-based），depth===0 时用于按索引生成编号 */
+  topIndex?: number;
 }) {
   const hasChildren = (node.children?.length ?? 0) > 0;
   const isActive = node.id === activeCategoryId;
@@ -153,7 +152,7 @@ function CategoryRow({
             isActive ? "font-medium text-white" : depth === 0 ? "font-medium" : ""
           )}
         >
-          {node.name}
+          {depth === 0 ? formatTopCategoryName(node.name, topIndex ?? 0) : node.name}
         </span>
 
         {totalSites > 0 && (
@@ -190,7 +189,12 @@ function CategoryRow({
       {showSites && !hasChildren && node.sites.length > 0 && isExpanded && (
         <div className="space-y-0.5">
           {node.sites.map((site) => (
-            <SiteRow key={site.id} site={site} depth={depth + 1} activeCategoryId={activeCategoryId} />
+            <SiteRow
+              key={site.id}
+              site={site}
+              depth={depth + 1}
+              activeCategoryId={activeCategoryId}
+            />
           ))}
         </div>
       )}
@@ -300,8 +304,11 @@ export function Sidebar({
   };
 
   const renderNav = (showSites: boolean) => (
-    <nav aria-label="分类导航" className="flex h-full min-h-0 flex-col gap-0.5 overflow-y-auto py-2">
-      {categories.map((cat) => (
+    <nav
+      aria-label="分类导航"
+      className="flex h-full min-h-0 flex-col gap-0.5 overflow-y-auto py-2"
+    >
+      {categories.map((cat, idx) => (
         <CategoryRow
           key={cat.id}
           node={cat}
@@ -311,6 +318,7 @@ export function Sidebar({
           onToggle={toggle}
           onSelect={onCategoryChange}
           showSites={showSites}
+          topIndex={idx}
         />
       ))}
     </nav>
@@ -334,7 +342,11 @@ export function Sidebar({
       {/* 移动端：抽屉式 —— 展示站点链接（无右侧主区，链接需从树里直达） */}
       {mobileOpen && (
         <div className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/40" onClick={onMobileClose} aria-label="关闭分类导航" />
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={onMobileClose}
+            aria-label="关闭分类导航"
+          />
           <aside className="absolute inset-y-0 left-0 w-72 max-w-[85vw] border-r border-[var(--border)] bg-[var(--background-secondary)] shadow-xl">
             <div className="flex h-full flex-col">
               <div className="flex items-center justify-between px-4 py-3">
@@ -345,8 +357,19 @@ export function Sidebar({
                   className="rounded-[var(--radius-sm)] p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
                   aria-label="关闭"
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M6 6L18 18M18 6L6 18"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
                   </svg>
                 </button>
               </div>
