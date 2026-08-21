@@ -45,7 +45,13 @@ fs.mkdirSync(standaloneNext, { recursive: true });
 const staticSrc = path.join(root, ".next", "static");
 const staticDest = path.join(standaloneNext, "static");
 copyDir(staticSrc, staticDest);
-copyDir(path.join(root, "public"), path.join(standaloneRoot, "public"));
+// public/ 可能不存在（空目录不被 git 跟踪，CI checkout 后目录缺失）——存在才拷贝
+const publicSrc = path.join(root, "public");
+if (fs.existsSync(publicSrc)) {
+  copyDir(publicSrc, path.join(standaloneRoot, "public"));
+} else {
+  console.log("[sync-standalone] No public/ directory — skip.");
+}
 
 const srcCount = countFilesRecursive(staticSrc);
 const destCount = countFilesRecursive(staticDest);
