@@ -24,7 +24,8 @@ RUN addgroup --system nodejs && \
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 # Copy static assets separately (not included in standalone)
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+# public/ 已无文件（git 不跟踪空目录），sync-standalone-assets.mjs 构建期已把 public
+# 合并进 standalone（存在才拷贝），此处无需再 COPY —— 目录缺失时 COPY 会直接构建失败
 
 EXPOSE 3000
 
