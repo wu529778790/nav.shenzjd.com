@@ -7,7 +7,6 @@
 
 import React, { Component, ReactNode } from "react";
 import { AlertCircle, RefreshCw, Home } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -106,18 +105,30 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             )}
 
             <div className="flex flex-col sm:flex-row gap-2">
-              <Button onClick={this.handleReset} variant="outline" className="flex-1 gap-2">
+              <button
+                type="button"
+                onClick={this.handleReset}
+                className="flex-1 flex items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+              >
                 <RefreshCw className="w-4 h-4" />
                 重试
-              </Button>
-              <Button onClick={this.handleReload} variant="outline" className="flex-1 gap-2">
+              </button>
+              <button
+                type="button"
+                onClick={this.handleReload}
+                className="flex-1 flex items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+              >
                 <RefreshCw className="w-4 h-4" />
                 刷新页面
-              </Button>
-              <Button onClick={this.handleGoHome} className="flex-1 gap-2">
+              </button>
+              <button
+                type="button"
+                onClick={this.handleGoHome}
+                className="flex-1 flex items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--neutral-900)] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--neutral-700)]"
+              >
                 <Home className="w-4 h-4" />
                 返回首页
-              </Button>
+              </button>
             </div>
 
             <div className="text-xs text-[var(--muted-foreground)] text-center">
