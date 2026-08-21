@@ -8,13 +8,14 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Sidebar } from "@/components/HomePage/Sidebar";
 import { StaticBoard } from "@/components/HomePage/StaticBoard";
 import { BentoSubCategoryGrid } from "@/components/HomePage/BentoGrid";
 import { Menu } from "lucide-react";
+import { formatTopCategoryName } from "@/lib/format";
 import type { Category, Site } from "@/types";
 
 /* ============ 树工具函数 ============ */
@@ -84,19 +85,29 @@ function countDescendantSites(node: Category): number {
 
 /* ============ 面包屑 ============ */
 
-function Breadcrumb({ path, onNavigate }: { path: Category[]; onNavigate: (id: string) => void }) {
+function Breadcrumb({
+  path,
+  topIndexMap,
+  onNavigate,
+}: {
+  path: Category[];
+  topIndexMap: Map<string, number>;
+  onNavigate: (id: string) => void;
+}) {
   if (path.length === 0) return null;
   return (
     <nav aria-label="面包屑" className="flex min-w-0 items-center gap-1.5 text-[13px]">
       <span className="text-[var(--muted-foreground)]">储物间</span>
       {path.map((c, i) => {
         const isLast = i === path.length - 1;
+        const isTop = i === 0;
+        const display = isTop ? formatTopCategoryName(c.name, topIndexMap.get(c.id) ?? 0) : c.name;
         return (
           <span key={c.id} className="flex min-w-0 items-center gap-1.5">
             <span className="text-[var(--border-strong)]">/</span>
             {isLast ? (
               <span className="flex min-w-0 items-center gap-1 font-medium text-[var(--foreground)]">
-                <span className="truncate">{c.name}</span>
+                <span className="truncate">{display}</span>
                 {c.sites.length > 0 && (
                   <span className="tabular-nums text-xs text-[var(--muted-foreground)]">
                     {c.sites.length}
@@ -109,7 +120,7 @@ function Breadcrumb({ path, onNavigate }: { path: Category[]; onNavigate: (id: s
                 onClick={() => onNavigate(c.id)}
                 className="cursor-pointer truncate text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
               >
-                {c.name}
+                {display}
               </button>
             )}
           </span>
@@ -123,9 +134,11 @@ function Breadcrumb({ path, onNavigate }: { path: Category[]; onNavigate: (id: s
 
 function GlobalSearchResults({
   results,
+  topIndexMap,
   onJumpToCategory,
 }: {
   results: Array<{ site: Site; category: Category; path: Category[] }>;
+  topIndexMap: Map<string, number>;
   onJumpToCategory: (id: string) => void;
 }) {
   const grouped = (() => {
@@ -159,13 +172,20 @@ function GlobalSearchResults({
               onClick={() => onJumpToCategory(root.id)}
               className="flex cursor-pointer items-center gap-2 text-sm hover:opacity-80"
             >
-              <span className="font-medium">{root.name}</span>
-              <span className="text-xs tabular-nums text-[var(--muted-foreground)]">{items.length}</span>
+              <span className="font-medium">
+                {formatTopCategoryName(root.name, topIndexMap.get(root.id) ?? 0)}
+              </span>
+              <span className="text-xs tabular-nums text-[var(--muted-foreground)]">
+                {items.length}
+              </span>
               <span className="text-xs text-[var(--foreground-secondary)]">查看该分类 →</span>
             </button>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {items.map(({ site, path }) => {
-                const subPath = path.slice(1).map((p) => p.name).join(" / ");
+                const subPath = path
+                  .slice(1)
+                  .map((p) => p.name)
+                  .join(" / ");
                 return (
                   <a
                     key={site.id}
@@ -174,9 +194,13 @@ function GlobalSearchResults({
                     rel="noopener noreferrer"
                     className="site-card group flex min-w-0 flex-col gap-1.5"
                   >
-                    <span className="truncate text-sm font-medium text-[var(--foreground)]">{site.title}</span>
+                    <span className="truncate text-sm font-medium text-[var(--foreground)]">
+                      {site.title}
+                    </span>
                     {subPath && (
-                      <span className="truncate text-xs text-[var(--muted-foreground)]">{subPath}</span>
+                      <span className="truncate text-xs text-[var(--muted-foreground)]">
+                        {subPath}
+                      </span>
                     )}
                   </a>
                 );
@@ -226,6 +250,15 @@ export default function HomeClient({
 
   const activeCategory = findNode(categories, activeCategoryId);
   const activePath = findPath(categories, activeCategoryId);
+
+  // 顶级分类 id → 0-based 数组下标（用于显示层按索引生成连续编号 01、02…）
+  // categories 是 SSR 注入的不可变初始 props，引用稳定
+  const topIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    categories.forEach((c, i) => map.set(c.id, i));
+    return map;
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization -- SSR 注入的不可变初始 props
+  }, [categories]);
 
   // ============ 全局搜索结果（跨整棵树） ============
   const globalSearchResults = (() => {
@@ -295,7 +328,8 @@ export default function HomeClient({
                 <div className="flex items-center gap-2 text-sm">
                   <span>
                     搜索「<strong>{searchQuery}</strong>」匹配
-                    <strong className="ml-1 tabular-nums">{globalSearchResults.length}</strong> 个结果
+                    <strong className="ml-1 tabular-nums">{globalSearchResults.length}</strong>{" "}
+                    个结果
                   </span>
                   <button
                     type="button"
@@ -303,13 +337,28 @@ export default function HomeClient({
                     className="ml-1 cursor-pointer rounded-full p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
                     aria-label="清除搜索"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        d="M6 6L18 18M18 6L6 18"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
                     </svg>
                   </button>
                 </div>
               ) : (
-                <Breadcrumb path={activePath} onNavigate={handleCategoryChange} />
+                <Breadcrumb
+                  path={activePath}
+                  topIndexMap={topIndexMap}
+                  onNavigate={handleCategoryChange}
+                />
               )}
 
               <span className="ml-auto text-xs tabular-nums text-[var(--muted-foreground)]">
@@ -321,6 +370,7 @@ export default function HomeClient({
             {globalSearchResults ? (
               <GlobalSearchResults
                 results={globalSearchResults}
+                topIndexMap={topIndexMap}
                 onJumpToCategory={handleCategoryChange}
               />
             ) : activeCategory ? (
@@ -328,7 +378,12 @@ export default function HomeClient({
                 {/* 标题行 + meta */}
                 <div className="space-y-1.5">
                   <h1 className="text-[32px] font-bold leading-tight tracking-tight text-[var(--foreground)]">
-                    {activeCategory.name}
+                    {activeCategory.parentId == null
+                      ? formatTopCategoryName(
+                          activeCategory.name,
+                          topIndexMap.get(activeCategory.id) ?? 0
+                        )
+                      : activeCategory.name}
                   </h1>
                   <p className="text-sm text-[var(--muted-foreground)]">
                     {activeCategory.children?.length
@@ -341,7 +396,9 @@ export default function HomeClient({
                 {/* 子分类 Bento 网格（如果有） */}
                 {activeCategory.children && activeCategory.children.length > 0 && (
                   <section>
-                    <h2 className="mb-3 text-[13px] font-semibold text-[var(--foreground)]">子分类</h2>
+                    <h2 className="mb-3 text-[13px] font-semibold text-[var(--foreground)]">
+                      子分类
+                    </h2>
                     <BentoSubCategoryGrid
                       nodes={activeCategory.children}
                       onNavigate={handleCategoryChange}
@@ -352,7 +409,9 @@ export default function HomeClient({
                 {/* 当前节点站点网格 */}
                 {activeCategory.sites.length > 0 ? (
                   <section>
-                    <h2 className="mb-3 text-[13px] font-semibold text-[var(--foreground)]">全部网站</h2>
+                    <h2 className="mb-3 text-[13px] font-semibold text-[var(--foreground)]">
+                      全部网站
+                    </h2>
                     <StaticBoard
                       sites={activeCategory.sites}
                       reportCounts={initialReportCounts}
