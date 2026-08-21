@@ -1,106 +1,69 @@
 /**
- * 应用头部组件（纯只读展示版，2026-08-21 重构）
- * Logo + GitHub 仓库链接 + 关于信息。
- * 搜索框在 HomeClient 顶部（聚焦当前分类），这里不再重复。
+ * 应用头部（2026-08-21 树形导航站重构）
+ *
+ * Vercel 极简：64px 白底 + Logo（黑方块 + 文字）+ 全局搜索框（⌘K 胶囊）。
+ * 搜索状态由 HomeClient 持有，通过 props 传入。
  */
 
 "use client";
 
-import { Github, Info } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { getRuntimePublicConfig, type RuntimePublicConfig } from "@/lib/runtime-public-config";
-import { useState, useEffect } from "react";
+import { useRef } from "react";
+import Link from "next/link";
 
-export function AppHeader() {
-  const [showAbout, setShowAbout] = useState(false);
-  const [runtimeConfig, setRuntimeConfig] = useState<RuntimePublicConfig | null>(null);
+interface AppHeaderProps {
+  searchValue: string;
+  onSearchChange: (value: string) => void;
+}
 
-  // 初始化运行时配置
-  useEffect(() => {
-    void (async () => {
-      const loadedRuntimeConfig = await getRuntimePublicConfig().catch(() => null);
-      if (loadedRuntimeConfig) {
-        setRuntimeConfig(loadedRuntimeConfig);
-      }
-    })();
-  }, []);
+export function AppHeader({ searchValue, onSearchChange }: AppHeaderProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <>
-      {/* 主导航栏 */}
-      <header className="glass sticky top-0 z-[45] w-full border-b border-[var(--border)]">
-        <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-4 md:px-6">
-          {/* Logo */}
-          <div
-            className="flex cursor-pointer items-center gap-3"
-            onClick={() => (window.location.href = "/")}
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-lg)] bg-[var(--primary-600)] text-lg font-bold text-white shadow-[var(--shadow-sm)]">
-              N
-            </div>
-            <h1 className="text-xl font-extrabold tracking-tight text-gradient">NavHub</h1>
-          </div>
+    <header className="sticky top-0 z-[45] h-16 w-full border-b border-[var(--border)] bg-[var(--background-secondary)]">
+      <div className="mx-auto flex h-full max-w-[1440px] items-center justify-between gap-4 px-4 md:px-6">
+        {/* Logo */}
+        <Link href="/" className="flex flex-shrink-0 items-center gap-2.5" aria-label="储物间首页">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] bg-[var(--neutral-900)]">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+              <path
+                d="M3 6.5C3 5.67 3.67 5 4.5 5H9.5L11.5 7H19.5C20.33 7 21 7.67 21 8.5V17.5C21 18.33 20.33 19 19.5 19H4.5C3.67 19 3 18.33 3 17.5V6.5Z"
+                fill="#FFD400"
+              />
+            </svg>
+          </span>
+          <span className="text-lg font-bold tracking-tight text-[var(--foreground)]">储物间</span>
+        </Link>
 
-          {/* 右侧操作区 */}
-          <div className="flex items-center gap-2">
-            {/* GitHub 仓库链接 */}
-            <a
-              href={`https://github.com/${runtimeConfig?.githubOwner || "wu529778790"}/${runtimeConfig?.githubRepo || "navhub.shenzjd.com"}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="GitHub 仓库"
-              className="hidden items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-secondary)] p-1.5 text-[var(--foreground-secondary)] transition-colors hover:border-[var(--primary-300)] hover:text-[var(--primary-700)] sm:flex"
+        {/* 全局搜索框 */}
+        <div className="flex min-w-0 flex-1 justify-end">
+          <div className="flex h-10 w-full max-w-md items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--muted)] px-3 transition-colors focus-within:border-[var(--neutral-900)]">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="flex-shrink-0 text-[var(--muted-foreground)]"
+              aria-hidden
             >
-              <Github className="h-4 w-4" />
-            </a>
-
-            {/* 关于按钮 */}
-            <button
-              type="button"
-              onClick={() => setShowAbout(!showAbout)}
-              className={cn(
-                "rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-secondary)] p-1.5 text-[var(--foreground-secondary)] transition-colors hover:border-[var(--primary-300)] hover:text-[var(--primary-700)]"
-              )}
-              aria-label="关于 NavHub"
-              aria-expanded={showAbout}
-            >
-              <Info className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* 关于弹层 */}
-      {showAbout && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setShowAbout(false)}
-        >
-          <div className="absolute inset-0 bg-black/40" />
-          <div
-            className="relative w-full max-w-sm rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--background-secondary)] p-6 shadow-[var(--shadow-lg)]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="mb-2 text-lg font-semibold">NavHub</h2>
-            <p className="text-sm text-[var(--muted-foreground)]">
-              聚合 4000+ 优质链接的导航站：影视、阅读、工具、AI、资源搜索等。
-              <br />
-              <br />
-              数据由 <strong>navdata</strong> 工具链爬取维护（luckman 补给营地 + 阿虚同学的储物间），
-              存储于 Turso 数据库，本站为纯只读展示。
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowAbout(false)}
-              className="mt-4 w-full cursor-pointer rounded-[var(--radius-md)] bg-[var(--primary-600)] py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--primary-700)]"
-            >
-              知道了
-            </button>
+              <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+              <path d="M16.5 16.5L21 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <input
+              ref={inputRef}
+              type="text"
+              value={searchValue}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="搜索分类或网站…"
+              aria-label="全局搜索"
+              className="min-w-0 flex-1 bg-transparent text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+            />
+            <kbd className="hidden flex-shrink-0 items-center justify-center rounded-[var(--radius-xs)] border border-[var(--border)] bg-[var(--background-secondary)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--muted-foreground)] sm:flex">
+              ⌘K
+            </kbd>
           </div>
         </div>
-      )}
-    </>
+      </div>
+    </header>
   );
 }

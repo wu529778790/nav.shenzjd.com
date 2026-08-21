@@ -1,11 +1,9 @@
 /**
- * HomePage 组件导出（树状导航纯只读版）
+ * HomePage 组件导出（树形导航纯只读版，2026-08-21 重构）
  */
-
-export { EmptyState } from "./EmptyState";
-
-export { HomeSkeleton } from "./HomeSkeleton";
 
 export { Sidebar } from "./Sidebar";
 
 export { StaticBoard } from "./StaticBoard";
+
+export { BentoSubCategoryGrid } from "./BentoGrid";
