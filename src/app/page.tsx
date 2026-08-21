@@ -1,14 +1,15 @@
 /**
  * 首页（服务端组件）
  *
- * SSR HTML 直接渲染，首屏立即可见。DataContext 同步从 localStorage 初始化
- * 真实数据（无需 prop 透传 seed），localStorage 优先 → 网络静默刷新。
+ * 全站私有 + 数据库模式（2026-08-21 起）：
+ * 数据由 RootLayout 服务端直读 Turso 数据库并 SSR 进首屏（真实书签，秒开无骨架）。
+ * 页面强制动态渲染，保证每次访问都拿到数据库最新数据。
  */
 
 import HomeClient from "@/components/HomePage/HomeClient";
 
-// 每小时后台重新生成，保持 HTML 新鲜
-export const revalidate = 3600;
+// 强制动态渲染：每次请求实时读库（数据在 Turso，无需 ISR 缓存）
+export const dynamic = "force-dynamic";
 
 export default function Page() {
   return <HomeClient />;

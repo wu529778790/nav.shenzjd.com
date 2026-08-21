@@ -12,31 +12,22 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // HTML / 页面路由：短缓存 + 后台校验。不再用 no-store，否则 ISR 预渲染的页面
-        // 永远无法被 CDN/浏览器缓存，首屏 TTFB 偏高。
-        // 配合 page.tsx 的 revalidate=3600：max-age=0 每次回源校验新鲜度，
-        // s-maxage 让 CDN 缓存 1 小时，stale-while-revalidate 保证后台刷新时仍秒开。
-        //
-        // 注意：排除 /api/* —— API 路由（尤其是 /api/auth/session）依赖
-        // 请求级 HttpOnly cookie 做鉴权，必须每个请求直达源站，不能被 CDN 缓存。
-        // 路由 handler 自己通过 `Cache-Control: no-store` 显式关闭缓存。
+        // HTML / 页面路由：数据库模式（2026-08-21 起）数据实时读 Turso，
+        // 页面为 force-dynamic 动态渲染，HTML 不缓存，保证每次访问数据最新。
+        // API 路由（/api/*）同样不缓存（路由 handler 自己通过 Cache-Control: no-store 控制）。
         source: "/((?!_next/static|_next/image|favicon.ico|sw\\.js|api/).*)",
         headers: [
           {
             key: "Cache-Control",
-            value: "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400",
+            value: "no-store, max-age=0",
           },
         ],
       },
     ];
   },
   images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "avatars.githubusercontent.com",
-      },
-    ],
+    // 全站私有模式：无 GitHub 头像等外部远程图片（favicon 走 /api/favicon 代理）
+    remotePatterns: [],
   },
 };
 

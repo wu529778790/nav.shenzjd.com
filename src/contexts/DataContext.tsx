@@ -4,6 +4,8 @@
  * 目标：
  * 1. 解决 DataContext 全局重渲染问题
  * 2. 实现乐观更新（操作即时反馈）
+ *
+ * 全站私有模式（2026-08-21 起）：无访客/登录概念，数据统一存 Turso 数据库。
  */
 
 "use client";
@@ -24,10 +26,9 @@ import {
   getSitesFromLocalStorage,
   isLocalDataValid,
 } from "@/lib/storage/local-storage";
-import { getDataFromGitHub, getYourDataFromGitHub } from "@/lib/storage/github-storage";
+import { getDataFromDb } from "@/lib/storage/db-storage";
 import { scheduleSync } from "@/lib/storage/nav-sync";
 import type { Category, Site, NavData } from "@/types";
-import { useToast } from "@/components/ui/toast";
 
 interface DataContextType {
   sites: Category[];
@@ -56,40 +57,35 @@ const defaultCategory: Category = {
 export function DataProvider({
   children,
   isAuthenticated,
-  isGuestMode,
   initialSites = [],
 }: {
   children: ReactNode;
   isAuthenticated: boolean;
-  isGuestMode: boolean;
   /** SSR 注入的种子数据；作为初始值避免首屏内容跳变（1条种子→N条本地数据） */
   initialSites?: Category[];
 }) {
-  // 首屏只读一次 localStorage，同步初始化 sites + loading —— 避免重复 I/O，
-  // 同时保持"有本地缓存即秒开、无本地缓存才 loading"的语义。
+  // 首屏初始化：SSR 注入的 initialSites 优先（服务端直读数据库的真实数据，
+  // 保证 SSR HTML 与客户端首帧一致，无闪跳）；无 SSR 数据时才用 localStorage 兜底。
   const [sites, setSites] = useState<Category[]>(() => {
+    if (initialSites.length > 0) {
+      return initialSites;
+    }
     const localData = loadFromLocalStorage();
     if (isLocalDataValid(localData)) {
       return localData!.categories;
     }
-    // 无效或空 → 回退到 SSR 种子（首次访客：首屏有内容可看）
-    if (initialSites.length > 0) return initialSites;
     return [];
   });
-  // 只在上方同步分支判定为"无有效初始数据"时才 loading，首屏不闪 skeleton
+  // SSR 已有数据 → 不闪骨架屏；无任何初始数据才 loading
   const [loading, setLoading] = useState(() => {
+    if (initialSites.length > 0) return false;
     const localData = loadFromLocalStorage();
-    return !isLocalDataValid(localData) && initialSites.length === 0;
+    return !isLocalDataValid(localData);
   });
   const [error, setError] = useState<string | null>(null);
-  const { showToast } = useToast();
-  // 防抖标记：一次登录会话内不重复触发自动 fork
-  const autoForkTriggeredRef = useRef(false);
 
   // 用于竞态控制：只允许最新的 fetch 更新状态
   const fetchIdRef = useRef(0);
-  // 用于检测认证状态从未登录→已登录的变化，确保切换后强制拉取用户数据
-  const prevAuthRef = useRef(isAuthenticated);
   // 用 ref 追踪当前 sites，避免 fetchSites 依赖 sites.length 导致无限刷新
   const sitesRef = useRef<Category[]>([]);
 
@@ -99,11 +95,8 @@ export function DataProvider({
    * 1. 本地有效 → 立即秒开（loading=false）
    * 2. 后台异步 revalidate（满足任一条件触发）：
    *    - 本地无有效数据
-   *    - 认证状态从未登录→已登录（首次登录后拉取用户数据）
-   *    - 已登录 + forceRefresh
-   * 3. revalidate 时：
-   *    - 已登录 → 拉自己的 GitHub 数据（通过 /api/github/data 带 Cookie）
-   *    - 访客 → 拉示例数据（每次拉，保证新鲜）
+   *    - forceRefresh
+   * 3. revalidate 时：从数据库拉取（通过 /api/data）
    * 4. 远程有内容 → 静默替换；远程失败 → 保持本地不动
    * 5. 本地也无效 → 仅内存设默认分类（不持久化，避免卡死）
    */
@@ -122,10 +115,7 @@ export function DataProvider({
         }
 
         // 第二步：后台 Revalidate（决定要不要拉远程）
-        // 认证状态从未登录→已登录时，必须重新拉取用户数据（覆盖首次加载本地无缓存的场景）
-        const authJustCompleted = isAuthenticated && !prevAuthRef.current;
-        if (authJustCompleted) prevAuthRef.current = true;
-        const shouldRevalidate = !localValid || authJustCompleted || (isAuthenticated && _forceRefresh);
+        const shouldRevalidate = !localValid || (isAuthenticated && _forceRefresh);
 
         if (shouldRevalidate) {
           // 本地无效且没有首屏数据时，才显示 loading
@@ -135,49 +125,10 @@ export function DataProvider({
 
           let remoteData: NavData | null = null;
 
-          if (isAuthenticated) {
-            try {
-              remoteData = await getDataFromGitHub("token-from-context");
-            } catch (e) {
-              const err = e as Error & { name?: string; status?: number };
-              const isForkNotCreated =
-                err?.name === "ForkNotCreatedError" ||
-                err?.message === "fork-not-created";
-
-              if (isForkNotCreated) {
-                // fork 仓库不存在 → 自动触发 fork 创建链：
-                // 后端 POST /api/github/data 会在写入 data/sites.json 之前
-                // 先执行 ensureForkedFromCookie → createFork → pollForkReady
-                //（poll 最多 8 次 × 1s × 2.0 退避 ≈ 50s 总等待）
-                // 成功后前端自动第二次 fetchSites 拿到数据。
-                if (!autoForkTriggeredRef.current) {
-                  autoForkTriggeredRef.current = true;
-                  // 无论本地是否有数据都要确保 fork 被创建。
-                  // 之前用 `if (local)` 守卫：登录但本地为空的用户
-                  // （访客阶段不持久化 / 清过缓存 / 新浏览器）会跳过分支，
-                  // 导致 fork 永不创建、每次加载都去 GitHub 打 404（见 data/*.log）。
-                  const local = loadFromLocalStorage();
-                  const payload: NavData = local ?? {
-                    version: "1.0",
-                    lastModified: 0,
-                    categories: [],
-                  };
-                  console.info(
-                    "[DataContext] fork 不存在，自动触发首次写操作（immediate）以创建仓库",
-                  );
-                  showToast("正在为您初始化 GitHub 仓库，请稍候...", "info", 8000);
-                  scheduleSync(payload, true);
-                } else {
-                  // 自动触发已经执行过一次仍失败 → 提示稍后重试
-                  console.warn("[DataContext] 自动 fork 已执行但仍 fork-not-created，跳过重复触发");
-                  showToast("仓库初始化失败，请稍后重试", "warning");
-                }
-              } else {
-                console.error("读取 GitHub 数据失败:", e);
-              }
-            }
-          } else if (!isAuthenticated || isGuestMode) {
-            remoteData = await getYourDataFromGitHub();
+          try {
+            remoteData = await getDataFromDb();
+          } catch (e) {
+            console.error("读取数据库数据失败:", e);
           }
 
           if (currentFetchId !== fetchIdRef.current) return;
@@ -216,7 +167,7 @@ export function DataProvider({
         setLoading(false);
       }
     },
-    [isAuthenticated, isGuestMode, showToast]
+    [isAuthenticated]
   );
 
   // 同步 sites → ref，供 fetchSites 内读取而不放入依赖
@@ -230,23 +181,11 @@ export function DataProvider({
     fetchSites();
   }, [fetchSites]);
 
-  // 监听认证变化自动刷新
-  useEffect(() => {
-    const handleAuthUpdate = () => fetchSites(true);
-    window.addEventListener("auth-update", handleAuthUpdate);
-    return () => window.removeEventListener("auth-update", handleAuthUpdate);
-  }, [fetchSites]);
-
   /**
    * ✨ 优化1：使用函数式更新 + 稳定引用的回调
    */
   const addSite = useCallback(
     async (categoryId: string, site: Site) => {
-      if (isGuestMode) {
-        window.location.href = "/api/auth/github/login";
-        return;
-      }
-
       // 乐观更新：立即更新UI
       setSites((prevSites) => {
         const newSites = prevSites.map((category) =>
@@ -258,20 +197,15 @@ export function DataProvider({
         return newSites;
       });
 
-      // 防抖 3s 后自动 sync 到 GitHub（之前这里是空函数导致 fork 从未被创建）
+      // 防抖 3s 后自动 sync 到数据库
       const data = loadFromLocalStorage();
       if (data) scheduleSync(data, false);
     },
-    [isGuestMode]
+    []
   );
 
   const updateSite = useCallback(
     async (categoryId: string, siteId: string, site: Site) => {
-      if (isGuestMode) {
-        window.location.href = "/api/auth/github/login";
-        return;
-      }
-
       // 乐观更新：立即更新UI
       setSites((prevSites) => {
         const newSites = prevSites.map((category) =>
@@ -286,20 +220,15 @@ export function DataProvider({
         return newSites;
       });
 
-      // 立即同步（之前这里是空函数导致 fork 从未被创建）
+      // 立即同步
       const data = loadFromLocalStorage();
       if (data) scheduleSync(data, true);
     },
-    [isGuestMode]
+    []
   );
 
   const deleteSite = useCallback(
     async (categoryId: string, siteId: string) => {
-      if (isGuestMode) {
-        window.location.href = "/api/auth/github/login";
-        return;
-      }
-
       // 乐观更新：打墓碑标记（不真删），让删除能跨设备传播
       setSites((prevSites) => {
         const newSites = prevSites.map((category) =>
@@ -318,20 +247,15 @@ export function DataProvider({
         return newSites;
       });
 
-      // 立即同步（之前这里是空函数导致 fork 从未被创建）
+      // 立即同步
       const data = loadFromLocalStorage();
       if (data) scheduleSync(data, true);
     },
-    [isGuestMode]
+    []
   );
 
   const addCategory = useCallback(
     async (category: Category) => {
-      if (isGuestMode) {
-        window.location.href = "/api/auth/github/login";
-        return;
-      }
-
       // 乐观更新
       setSites((prevSites) => {
         const newSites = [...prevSites, category];
@@ -339,20 +263,15 @@ export function DataProvider({
         return newSites;
       });
 
-      // 防抖 3s 后自动 sync 到 GitHub（之前这里是空函数导致 fork 从未被创建）
+      // 防抖 3s 后自动 sync 到数据库
       const data = loadFromLocalStorage();
       if (data) scheduleSync(data, false);
     },
-    [isGuestMode]
+    []
   );
 
   const updateCategory = useCallback(
     async (categoryId: string, category: Category) => {
-      if (isGuestMode) {
-        window.location.href = "/api/auth/github/login";
-        return;
-      }
-
       // 乐观更新
       setSites((prevSites) => {
         const newSites = prevSites.map((c) =>
@@ -362,20 +281,15 @@ export function DataProvider({
         return newSites;
       });
 
-      // 立即同步（之前这里是空函数导致 fork 从未被创建）
+      // 立即同步
       const data = loadFromLocalStorage();
       if (data) scheduleSync(data, true);
     },
-    [isGuestMode]
+    []
   );
 
   const deleteCategory = useCallback(
     async (categoryId: string) => {
-      if (isGuestMode) {
-        window.location.href = "/api/auth/github/login";
-        return;
-      }
-
       // 乐观更新：打墓碑标记（不真删），让分类删除也能跨设备传播
       setSites((prevSites) => {
         const newSites = prevSites.map((c) =>
@@ -387,27 +301,22 @@ export function DataProvider({
         return newSites;
       });
 
-      // 立即同步（之前这里是空函数导致 fork 从未被创建）
+      // 立即同步
       const data = loadFromLocalStorage();
       if (data) scheduleSync(data, true);
     },
-    [isGuestMode]
+    []
   );
 
   const updateSites = useCallback(
     async (newSites: Category[]) => {
-      if (isGuestMode) {
-        window.location.href = "/api/auth/github/login";
-        return;
-      }
-
       setSites(newSites);
       saveSitesToLocalStorage(newSites);
-      // 立即同步（之前这里是空函数导致 fork 从未被创建）
+      // 立即同步
       const data = loadFromLocalStorage();
       if (data) scheduleSync(data, true);
     },
-    [isGuestMode]
+    []
   );
 
   const clearError = useCallback(() => setError(null), []);
@@ -465,13 +374,6 @@ export function useData() {
 /**
  * 只订阅站点数据
  * ✨ 只有 sites 变化时才重渲染，loading/error 变化不会触发更新
- *
- * @example
- * // ❌ 旧方式：loading 变化也会触发重渲染
- * const { sites, loading } = useData();
- *
- * // ✅ 新方式：只在 sites 变化时更新
- * const sites = useSitesData();
  */
 export function useSitesData(): Category[] {
   const { sites } = useData();
@@ -497,9 +399,6 @@ export function useErrorState(): { error: string | null; clearError: () => void 
 
 /**
  * 只订阅站点操作方法（不包含数据）
- * ✨ 数据变化时不会触发重渲染（函数引用稳定）
- *
- * 适用场景：SiteCard、AddSiteDialog 等只需要操作方法的组件
  */
 export function useSiteOperations() {
   const { addSite, updateSite, deleteSite } = useData();

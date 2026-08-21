@@ -12,10 +12,7 @@ const envSchema = z.object({
   // Node 环境
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
-  // GitHub OAuth 配置
-  NEXT_PUBLIC_GITHUB_CLIENT_ID: z.string().min(1, "GitHub Client ID 未设置"),
-
-  // 可选：GitHub 仓库配置（使用默认值如果未设置）
+  // GitHub 仓库链接展示配置（可选，仅用于头部 GitHub 图标链接）
   NEXT_PUBLIC_GITHUB_OWNER: z.string().default("wu529778790"),
   NEXT_PUBLIC_GITHUB_REPO: z.string().default("navhub.shenzjd.com"),
 });
@@ -34,7 +31,6 @@ function validateEnv(): Env {
     // 只验证浏览器可访问的环境变量（NEXT_PUBLIC_*）
     const browserEnv = {
       NODE_ENV: process.env.NODE_ENV,
-      NEXT_PUBLIC_GITHUB_CLIENT_ID: process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID,
       NEXT_PUBLIC_GITHUB_OWNER: process.env.NEXT_PUBLIC_GITHUB_OWNER,
       NEXT_PUBLIC_GITHUB_REPO: process.env.NEXT_PUBLIC_GITHUB_REPO,
     };
@@ -84,21 +80,14 @@ export function isTest(): boolean {
 }
 
 /**
- * 获取 GitHub Client ID
- */
-export function getGitHubClientId(): string {
-  return getEnv().NEXT_PUBLIC_GITHUB_CLIENT_ID;
-}
-
-/**
- * 获取 GitHub 仓库所有者
+ * 获取 GitHub 仓库所有者（仅用于 UI 展示）
  */
 export function getGitHubOwner(): string {
   return getEnv().NEXT_PUBLIC_GITHUB_OWNER;
 }
 
 /**
- * 获取 GitHub 仓库名称
+ * 获取 GitHub 仓库名称（仅用于 UI 展示）
  */
 export function getGitHubRepo(): string {
   return getEnv().NEXT_PUBLIC_GITHUB_REPO;

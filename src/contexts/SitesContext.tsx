@@ -20,9 +20,9 @@ import type { Category } from "@/types";
  * useSites() 的消费方可通过这些回调感知同步结果、token 丢失等。
  */
 export interface SitesEventCallbacks {
-  /** POST /api/github/data 成功 */
+  /** POST /api/data 成功 */
   onSyncSuccess?: () => void;
-  /** POST /api/github/data 失败 */
+  /** POST /api/data 失败 */
   onSyncError?: (err: Error) => void;
   /** 用户切换检测到（A → B），让 DataProvider 重置内部 state */
   onUserLoginDetected?: () => void;
@@ -43,14 +43,8 @@ interface SitesProviderProps {
  * - onUserChanged 处理用户切换时清空 localStorage 并重新拉取数据
  */
 export function SitesProvider({ children, initialSites = [] }: SitesProviderProps) {
-  const { isAuthenticated, isGuestMode } = useAuth();
-
   return (
-    <DataProvider
-      isAuthenticated={isAuthenticated}
-      isGuestMode={isGuestMode}
-      initialSites={initialSites}
-    >
+    <DataProvider isAuthenticated={true} initialSites={initialSites}>
       {children}
     </DataProvider>
   );

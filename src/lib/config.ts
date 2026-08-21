@@ -3,27 +3,18 @@
  * 集中管理所有配置项，避免硬编码
  */
 
-// GitHub 仓库配置
+// GitHub 仓库配置（仅用于头部 GitHub 图标链接展示）
 export const GITHUB_CONFIG = {
-  // 原始仓库信息（可以从环境变量读取）
   ORIGINAL_OWNER: process.env.NEXT_PUBLIC_GITHUB_OWNER || "wu529778790",
   ORIGINAL_REPO: process.env.NEXT_PUBLIC_GITHUB_REPO || "navhub.shenzjd.com",
-  DATA_FILE_PATH: process.env.NEXT_PUBLIC_DATA_FILE_PATH || "data/sites.json",
-} as const;
-
-// OAuth 配置
-export const OAUTH_CONFIG = {
-  CLIENT_ID: process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || "",
-  CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET || "",
-  SCOPE: "repo gist",
 } as const;
 
 // 应用配置
 export const APP_CONFIG = {
   NAME: "NavHub",
   VERSION: "1.0.0",
-  DESCRIPTION: "个人导航网站，支持本地存储和 GitHub 同步",
-  /** 部署站点 URL，用于写 GitHub 时附加的 commit message 宣传后缀 */
+  DESCRIPTION: "个人导航网站，数据存储于 Turso 数据库",
+  /** 部署站点 URL */
   SITE_URL: process.env.NEXT_PUBLIC_SITE_URL || "https://navhub.shenzjd.com",
 } as const;
 
@@ -66,12 +57,12 @@ export const URL_PARSER_CONFIG = {
 export function validateConfig(): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  if (!OAUTH_CONFIG.CLIENT_ID) {
-    errors.push("NEXT_PUBLIC_GITHUB_CLIENT_ID 未配置");
+  if (!process.env.TURSO_DATABASE_URL) {
+    errors.push("TURSO_DATABASE_URL 未配置");
   }
 
-  if (!OAUTH_CONFIG.CLIENT_SECRET) {
-    errors.push("GITHUB_CLIENT_SECRET 未配置");
+  if (!process.env.TURSO_AUTH_TOKEN) {
+    errors.push("TURSO_AUTH_TOKEN 未配置");
   }
 
   return {

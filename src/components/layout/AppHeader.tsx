@@ -1,29 +1,25 @@
 /**
  * 应用头部组件（重构版）
  * 拆分为多个子组件，职责清晰
+ *
+ * 全站私有模式（2026-08-21 起）：无登录/登出，右上角为设置入口。
  */
 
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { SyncStatus } from "@/components/SyncStatus";
 import { Button } from "@/components/ui/button";
-import { Github, Search } from "lucide-react";
+import { Github, Search, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { clearAuth } from "@/lib/auth";
-import { useToast } from "@/components/ui/toast";
 import { getRuntimePublicConfig, type RuntimePublicConfig } from "@/lib/runtime-public-config";
 
 // 子组件
 import { SyncProgressBar } from "./AppHeader/SyncProgressBar";
-import { UserMenu } from "./AppHeader/UserMenu";
 import { SettingsDialog } from "./AppHeader/SettingsDialog";
 
 export function AppHeader() {
-  const { authUser } = useAuth();
   const [syncStep] = useState<import("@/types").SyncStepInfo | null>(null);
-  const { showToast } = useToast();
 
   // 搜索框状态
   const [searchQuery, setSearchQuery] = useState("");
@@ -47,8 +43,6 @@ export function AppHeader() {
 
   // 状态管理
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [githubClientId, setGithubClientId] = useState("");
-  const [runtimeConfigLoaded, setRuntimeConfigLoaded] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState<RuntimePublicConfig | null>(null);
 
   // mounted 保护: 避免 SSR hydration mismatch
@@ -61,29 +55,12 @@ export function AppHeader() {
   // 初始化运行时配置
   useEffect(() => {
     void (async () => {
-      const params = new URLSearchParams(window.location.search);
-      const oauthError = params.get("oauth_error");
-      const oauthSuccess = params.get("oauth_success");
-
-      if (oauthError) {
-        showToast(`登录失败: ${oauthError}`, "error");
-        window.history.replaceState({}, "", window.location.pathname);
-      }
-
       const loadedRuntimeConfig = await getRuntimePublicConfig().catch(() => null);
       if (loadedRuntimeConfig) {
         setRuntimeConfig(loadedRuntimeConfig);
-        setGithubClientId(loadedRuntimeConfig.githubClientId);
-      }
-      setRuntimeConfigLoaded(true);
-
-      if (oauthSuccess) {
-        showToast("登录成功", "success");
-        window.history.replaceState({}, "", window.location.pathname);
-        window.dispatchEvent(new Event("auth-update"));
       }
     })();
-  }, [showToast]);
+  }, []);
 
   // 监听 open-settings 事件
   useEffect(() => {
@@ -104,41 +81,6 @@ export function AppHeader() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
-  const handleGitHubLogin = async () => {
-    let clientId = githubClientId;
-    if (!clientId) {
-      const loadedRuntimeConfig = await getRuntimePublicConfig().catch(() => null);
-      if (!loadedRuntimeConfig) {
-        setRuntimeConfigLoaded(true);
-        showToast("运行时配置加载失败，请稍后重试", "error");
-        return;
-      }
-
-      setRuntimeConfig(loadedRuntimeConfig);
-      clientId = loadedRuntimeConfig.githubClientId;
-      setGithubClientId(loadedRuntimeConfig.githubClientId);
-      setRuntimeConfigLoaded(true);
-    }
-
-    if (!clientId) {
-      showToast("请配置 NEXT_PUBLIC_GITHUB_CLIENT_ID 环境变量", "error");
-      return;
-    }
-
-    // 直接跳转 GitHub OAuth，不做前置确认弹窗
-    window.location.href = "/api/auth/github/login";
-  };
-
-  // 退出登录处理
-  const handleGitHubLogout = () => {
-    if (confirm("确定要退出登录吗？")) {
-      void (async () => {
-        await clearAuth();
-        window.dispatchEvent(new Event("auth-update"));
-        window.location.reload();
-      })();
-    }
-  };
 
   return (
     <>
@@ -217,37 +159,23 @@ export function AppHeader() {
               <Github className="h-4 w-4" />
             </a>
 
-            {/* 用户菜单或登录按钮 */}
-            {authUser ? (
-              <UserMenu
-                authUser={authUser}
-                onOpenSettings={() => setShowSettingsModal(true)}
-                onLogout={handleGitHubLogout}
-                runtimeConfig={runtimeConfig}
-              />
-            ) : (
-              <Button
-                size="sm"
-                onClick={() => void handleGitHubLogin()}
-                disabled={!runtimeConfigLoaded && !githubClientId}
-                className="gap-2 shadow-md transition-all hover:shadow-lg"
-              >
-                <Github className="h-4 w-4" />
-                登录
-              </Button>
-            )}
+            {/* 全站私有：设置入口 */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowSettingsModal(true)}
+              className="gap-2"
+              aria-label="打开设置"
+            >
+              <Settings className="h-4 w-4" />
+              设置
+            </Button>
           </div>
         </div>
       </header>
 
       {/* 设置对话框 */}
-      <SettingsDialog
-        open={showSettingsModal}
-        onOpenChange={setShowSettingsModal}
-        authUser={authUser}
-        onLogout={handleGitHubLogout}
-        runtimeConfig={runtimeConfig}
-      />
+      <SettingsDialog open={showSettingsModal} onOpenChange={setShowSettingsModal} />
     </>
   );
 }

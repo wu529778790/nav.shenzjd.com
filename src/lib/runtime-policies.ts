@@ -9,14 +9,6 @@ export const STATIC_CACHE_URLS = [] as const;
 const ALLOWED_IMAGE_ORIGINS = [
   "'self'",
   "data:",
-  // GitHub 头像
-  "https://avatars.githubusercontent.com",
-  "https://avatars0.githubusercontent.com",
-  "https://avatars1.githubusercontent.com",
-  "https://avatars2.githubusercontent.com",
-  "https://avatars3.githubusercontent.com",
-  "https://avatars4.githubusercontent.com",
-  "https://avatars5.githubusercontent.com",
   // Google Favicon 服务
   "https://www.google.com",
   "https://t1.gstatic.com",
@@ -43,8 +35,6 @@ export function buildContentSecurityPolicy(): string {
     `img-src ${[...ALLOWED_IMAGE_ORIGINS].join(" ")}`,
     [
       "connect-src 'self'",
-      "https://api.github.com",
-      "https://raw.githubusercontent.com",
       "https://api.microlink.io",
       "https://noembed.com",
       CLOUDFLARE_INSIGHTS_ORIGIN.replace("https://", "https://"),

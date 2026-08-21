@@ -26,6 +26,8 @@ export interface Category {
   icon?: string;
   sort: number;
   sites: Site[];
+  /** 最后修改时间（ISO 字符串），用于 merge 时 last-writer-wins */
+  updatedAt?: string;
   /** 墓碑标记：分类级删除同样需要跨设备传播 */
   _deleted?: boolean;
   deletedAt?: string;
@@ -49,10 +51,8 @@ export interface AuthUser {
 
 /** 运行时公共配置 */
 export interface RuntimePublicConfig {
-  githubClientId: string;
   githubOwner: string;
   githubRepo: string;
-  dataFilePath: string;
 }
 
 /** 同步相关类型 */

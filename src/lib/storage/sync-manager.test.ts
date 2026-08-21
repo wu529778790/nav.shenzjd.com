@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { saveDataToGitHub } from "./github-storage";
+import { saveDataToDb } from "./db-storage";
 import { clearLocalStorage, setLastSyncTime, type NavData } from "./local-storage";
 import { resolveSyncDirection } from "./sync-manager";
 
-vi.mock("./github-storage", () => ({
-  getDataFromGitHub: vi.fn(),
-  saveDataToGitHub: vi.fn(),
+vi.mock("./db-storage", () => ({
+  getDataFromDb: vi.fn(),
+  saveDataToDb: vi.fn(),
 }));
 
-const mockedSaveDataToGitHub = vi.mocked(saveDataToGitHub);
+const mockedSaveDataToDb = vi.mocked(saveDataToDb);
 
 function navData(title: string, lastModified: number): NavData {
   return {
@@ -34,31 +34,31 @@ function navData(title: string, lastModified: number): NavData {
 describe("resolveSyncDirection", () => {
   beforeEach(() => {
     clearLocalStorage();
-    mockedSaveDataToGitHub.mockReset();
+    mockedSaveDataToDb.mockReset();
   });
 
-  it("本地和 GitHub 都基于上次同步版本变更时拒绝静默覆盖", async () => {
+  it("本地和数据库都基于上次同步版本变更时拒绝静默覆盖", async () => {
     const base = navData("Base", 100);
     const local = navData("Local", 300);
-    const github = navData("GitHub", 200);
+    const remote = navData("Remote", 200);
     setLastSyncTime(base);
 
-    const result = await resolveSyncDirection(local, github, "token", "test");
+    const result = await resolveSyncDirection(local, remote, "token", "test");
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("同步冲突");
-    expect(mockedSaveDataToGitHub).not.toHaveBeenCalled();
+    expect(mockedSaveDataToDb).not.toHaveBeenCalled();
   });
 
   it("时间戳相同但内容不同会返回冲突", async () => {
     const local = navData("Local", 100);
-    const github = navData("GitHub", 100);
+    const remote = navData("Remote", 100);
 
-    const result = await resolveSyncDirection(local, github, "token", "test");
+    const result = await resolveSyncDirection(local, remote, "token", "test");
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("时间戳相同但内容不同");
-    expect(mockedSaveDataToGitHub).not.toHaveBeenCalled();
+    expect(mockedSaveDataToDb).not.toHaveBeenCalled();
   });
 
   it("只有本地相对上次同步版本变更时仍然上传", async () => {
@@ -70,6 +70,6 @@ describe("resolveSyncDirection", () => {
 
     expect(result.success).toBe(true);
     expect(result.direction).toBe("upload");
-    expect(mockedSaveDataToGitHub).toHaveBeenCalledOnce();
+    expect(mockedSaveDataToDb).toHaveBeenCalledOnce();
   });
 });

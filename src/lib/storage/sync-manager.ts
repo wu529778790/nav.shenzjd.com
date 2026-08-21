@@ -1,6 +1,6 @@
 /**
  * 同步管理器
- * 管理本地存储和 GitHub 之间的同步
+ * 管理本地存储和数据库（Turso）之间的同步
  *
  * 冲突检测优化：
  * 1. 使用内容指纹（而非仅时间戳）作为主要判断依据
@@ -14,7 +14,7 @@ import {
   getDataFingerprint,
   getLastSyncedFingerprint,
 } from "./local-storage";
-import { saveDataToGitHub, getDataFromGitHub } from "./github-storage";
+import { saveDataToDb, getDataFromDb } from "./db-storage";
 import { mergeNavData } from "./merge";
 import { STORAGE_CONFIG, SYNC_CONFIG } from "@/lib/config";
 import type { NavData, SyncResult, SyncStep, SyncStepInfo } from "@/types";
@@ -134,20 +134,20 @@ export { SyncStatus } from "@/types";
  */
 function getSyncConflictError(
   localData: NavData | null,
-  githubData: NavData | null
+  remoteData: NavData | null
 ): string | null {
   const localFingerprint = getDataFingerprint(localData);
-  const githubFingerprint = getDataFingerprint(githubData);
+  const remoteFingerprint = getDataFingerprint(remoteData);
   const lastSyncedFingerprint = getLastSyncedFingerprint();
   const lastSyncVersion = getLastSyncVersion();
 
   // 基本校验
-  if (!localData || !githubData || !localFingerprint || !githubFingerprint) {
+  if (!localData || !remoteData || !localFingerprint || !remoteFingerprint) {
     return null;
   }
 
   const currentLocalVersion = getDataVersion();
-  const remoteVersion = (githubData as unknown as Record<string, unknown>)._version as number | undefined;
+  const remoteVersion = (remoteData as unknown as Record<string, unknown>)._version as number | undefined;
 
   // 策略1: 版本号冲突检测（最可靠）
   if (lastSyncVersion && remoteVersion) {
@@ -161,27 +161,27 @@ function getSyncConflictError(
 
   // 策略2: 指纹变化检测
   const bothChangedSinceLastSync =
-    localFingerprint !== githubFingerprint &&
+    localFingerprint !== remoteFingerprint &&
     lastSyncedFingerprint &&
     localFingerprint !== lastSyncedFingerprint &&
-    githubFingerprint !== lastSyncedFingerprint;
+    remoteFingerprint !== lastSyncedFingerprint;
 
   if (bothChangedSinceLastSync) {
-    return "检测到同步冲突：本地和 GitHub 数据都已修改，请先备份后手动合并";
+    return "检测到同步冲突：本地和数据库数据都已修改，请先备份后手动合并";
   }
 
   // 策略3: 时间戳兜底检测（仅作为最后手段）
   const localTime = localData.lastModified || 0;
-  const githubTime = githubData.lastModified || 0;
+  const remoteTime = remoteData.lastModified || 0;
 
   // 排除默认空数据的情况（lastModified=0）
   if (
     localTime > 0 &&
-    githubTime > 0 &&
-    localTime === githubTime &&
-    localFingerprint !== githubFingerprint
+    remoteTime > 0 &&
+    localTime === remoteTime &&
+    localFingerprint !== remoteFingerprint
   ) {
-    return "检测到同步冲突：本地和 GitHub 时间戳相同但内容不同，请手动合并";
+    return "检测到同步冲突：本地和数据库时间戳相同但内容不同，请手动合并";
   }
 
   return null;
@@ -193,12 +193,12 @@ function getSyncConflictError(
  */
 export async function resolveSyncDirection(
   localData: NavData | null,
-  githubData: NavData | null,
+  remoteData: NavData | null,
   token: string,
   commitMessagePrefix: string
 ): Promise<SyncResult> {
   const isLocalEmpty = isLocalDataEmpty(localData);
-  const conflictError = getSyncConflictError(localData, githubData);
+  const conflictError = getSyncConflictError(localData, remoteData);
   if (conflictError) {
     return {
       success: false,
@@ -208,31 +208,31 @@ export async function resolveSyncDirection(
     };
   }
 
-  // 情况 1: 本地为空，GitHub 有数据 → 下载
-  if (isLocalEmpty && githubData) {
-    saveToLocalStorage(githubData);
+  // 情况 1: 本地为空，数据库有数据 → 下载
+  if (isLocalEmpty && remoteData) {
+    saveToLocalStorage(remoteData);
     // 记录远程版本号
-    const remoteVersion = (githubData as unknown as Record<string, unknown>)._version as number | undefined;
+    const remoteVersion = (remoteData as unknown as Record<string, unknown>)._version as number | undefined;
     if (remoteVersion) {
       incrementDataVersion();
       saveSyncVersion({ localVersion: getDataVersion(), remoteVersion });
     }
-    setLastSyncTime(githubData);
+    setLastSyncTime(remoteData);
     return {
       success: true,
       direction: "download",
-      message: "从 GitHub 下载数据",
+      message: "从数据库下载数据",
     };
   }
 
-  // 情况 2: GitHub 为空，本地有有效数据 → 上传
-  if (githubData === null && !isLocalEmpty && localData) {
+  // 情况 2: 数据库为空，本地有有效数据 → 上传
+  if (remoteData === null && !isLocalEmpty && localData) {
     const newVersion = incrementDataVersion();
     // 在数据中嵌入版本号
     const dataWithVersion = { ...localData, _version: newVersion } as NavData;
-    await saveDataToGitHub(token, dataWithVersion, `${commitMessagePrefix} ${new Date().toISOString()}`);
+    await saveDataToDb(dataWithVersion, `${commitMessagePrefix} ${new Date().toISOString()}`);
     
-    const remoteVersion = (githubData as unknown as Record<string, unknown>)._version as number | undefined;
+    const remoteVersion = (remoteData as unknown as Record<string, unknown>)._version as number | undefined;
     if (remoteVersion) {
       saveSyncVersion({ localVersion: newVersion, remoteVersion });
     }
@@ -240,12 +240,12 @@ export async function resolveSyncDirection(
     return {
       success: true,
       direction: "upload",
-      message: "上传本地数据到 GitHub",
+      message: "上传本地数据到数据库",
     };
   }
 
   // 情况 3: 双方都为空 → 无需操作
-  if (isLocalEmpty && githubData === null) {
+  if (isLocalEmpty && remoteData === null) {
     setLastSyncTime();
     return {
       success: true,
@@ -255,17 +255,17 @@ export async function resolveSyncDirection(
   }
 
   // 情况 4: 双方都有有效数据，比较时间戳
-  if (localData && githubData && !isLocalEmpty) {
+  if (localData && remoteData && !isLocalEmpty) {
     const localTime = localData.lastModified || 0;
-    const githubTime = githubData.lastModified || 0;
+    const remoteTime = remoteData.lastModified || 0;
 
-    if (localTime > githubTime) {
+    if (localTime > remoteTime) {
       // 本地更新，上传
       const newVersion = incrementDataVersion();
       const dataWithVersion = { ...localData, _version: newVersion } as NavData;
-      await saveDataToGitHub(token, dataWithVersion, `${commitMessagePrefix} ${new Date().toISOString()}`);
+      await saveDataToDb(dataWithVersion, `${commitMessagePrefix} ${new Date().toISOString()}`);
       
-      const remoteVersion = (githubData as unknown as Record<string, unknown>)._version as number | undefined;
+      const remoteVersion = (remoteData as unknown as Record<string, unknown>)._version as number | undefined;
       if (remoteVersion) {
         saveSyncVersion({ localVersion: newVersion, remoteVersion });
       }
@@ -273,21 +273,21 @@ export async function resolveSyncDirection(
       return {
         success: true,
         direction: "upload",
-        message: "本地数据较新，已上传到 GitHub",
+        message: "本地数据较新，已上传到数据库",
       };
-    } else if (githubTime > localTime) {
-      // GitHub 更新，下载
-      saveToLocalStorage(githubData);
-      const remoteVersion = (githubData as unknown as Record<string, unknown>)._version as number | undefined;
+    } else if (remoteTime > localTime) {
+      // 数据库更新，下载
+      saveToLocalStorage(remoteData);
+      const remoteVersion = (remoteData as unknown as Record<string, unknown>)._version as number | undefined;
       if (remoteVersion) {
         incrementDataVersion();
         saveSyncVersion({ localVersion: getDataVersion(), remoteVersion });
       }
-      setLastSyncTime(githubData);
+      setLastSyncTime(remoteData);
       return {
         success: true,
         direction: "download",
-        message: "GitHub 数据较新，已下载到本地",
+        message: "数据库数据较新，已下载到本地",
       };
     } else {
       // 时间戳相同，数据一致
@@ -310,14 +310,11 @@ export async function resolveSyncDirection(
 
 interface SyncOptions {
   /**
-   * GitHub access token；或一个返回 token 的 getter（推荐）。
+   * 兼容旧接口保留的 token 参数（全站私有模式下恒为 "cookie" 哨兵值，
+   * 数据读写由服务端完成，前端无需真实 token）。
    *
-   * 为什么是 getter：SyncManager 的生命周期通常比 token 长（整个会话），
-   * 但 token 可能在 OAuth 回调后 302 重刷时被更新。用 getter 让每次触发同步时
-   * 都能拿到"当前最新"的 token，而不是 constructor 时捕获的一个可能已失效的值。
-   *
-   * 哨兵值 "cookie" 表示 token 由 HttpOnly Cookie 携带（前端无法读取），
-   * getter 返回此值时守卫通过，真实的 token 由 fetch credentials: same-origin 自动带。
+   * 哨兵值 "cookie" 表示 token 由服务端持有，前端无法读取，
+   * getter 返回此值时守卫通过。
    */
   token?: string | (() => string | undefined | null);
   /** authenticity 标志。推荐用 getter，避免启/停同步时获取到过期状态。 */
@@ -332,7 +329,7 @@ const SYNC_STEPS: Record<SyncStep, string> = {
   prepare: "准备同步...",
   fetching: "获取远程数据...",
   comparing: "比较数据差异...",
-  uploading: "上传数据到 GitHub...",
+  uploading: "上传数据到数据库...",
   downloading: "下载数据到本地...",
   merging: "合并数据...",
   done: "完成",
@@ -429,15 +426,15 @@ export class SyncManager {
       this.updateStep("fetching", 30);
       const localData = loadFromLocalStorage();
 
-      // 3. 获取 GitHub 数据
-      const githubData = await getDataFromGitHub(resolveToken(this.options.token)!);
+      // 3. 获取数据库数据
+      const remoteData = await getDataFromDb();
       this.updateStep("fetching", 50);
 
       // 4. 比较数据
       this.updateStep("comparing", 60);
 
       // 5. 检测冲突并解决
-      const result = await this.resolveConflict(localData, githubData);
+      const result = await this.resolveConflict(localData, remoteData);
 
       // 6. 更新状态
       if (result.success) {
@@ -463,21 +460,21 @@ export class SyncManager {
   /**
    * 冲突检测与解决
    * 规则：
-   * 1. 本地为空（或只有默认分类）+ GitHub 有数据 → 下载
-   * 2. GitHub 为空 + 本地有有效数据 → 上传
+   * 1. 本地为空（或只有默认分类）+ 数据库有数据 → 下载
+   * 2. 数据库为空 + 本地有有效数据 → 上传
    * 3. 双方都为空 → 无需操作
    * 4. 双方都有数据 → 比较时间戳决定方向
    */
   private async resolveConflict(
     localData: NavData | null,
-    githubData: NavData | null
+    remoteData: NavData | null
   ): Promise<SyncResult> {
     // 预测同步方向以更新 UI 状态
     const isLocalEmpty = isLocalDataEmpty(localData);
     const direction =
-      isLocalEmpty && githubData
+      isLocalEmpty && remoteData
         ? "download"
-        : githubData === null && !isLocalEmpty
+        : remoteData === null && !isLocalEmpty
           ? "upload"
           : "none";
 
@@ -492,7 +489,7 @@ export class SyncManager {
     // 使用共享的同步逻辑
     const result = await resolveSyncDirection(
       localData,
-      githubData,
+      remoteData,
       resolveToken(this.options.token)!,
       `[skip ci] Sync`
     );
@@ -547,41 +544,24 @@ export class SyncManager {
     this.updateStatus(SyncStatus.SYNCING);
 
     try {
-      // 读阶段：fork-not-created 场景下 githubData 会抛 ForkNotCreatedError。
-      // 此时 saveDataToGitHub 是首个写操作，POST /api/github/data 的
-      // saveDataToGitHubByCookie 会先 ensureForkedFromCookie 自动创建 fork。
-      // 因此这里 catch ForkNotCreatedError 后继续走写入，不阻断 fork 初始化流程。
-      // 其他错误（401/403/500/网络）仍抛错——这些情况下 save 也会失败，尽早失败更清晰。
-      let githubData: NavData | null = null;
+      // 读阶段：直接拉取数据库数据（无 fork 概念，数据库不存在初始化流程）
+      let remoteData: NavData | null = null;
       try {
-        githubData = await getDataFromGitHub(liveToken);
+        remoteData = await getDataFromDb();
       } catch (readError) {
-        const errName = (readError as { name?: string }).name;
-        const errStatus = (readError as { status?: number }).status;
-        const isForkNotCreated =
-          errName === "ForkNotCreatedError" ||
-          (readError as { message?: string })?.message === "fork-not-created" ||
-          errStatus === 404;
-        if (!isForkNotCreated) {
-          throw readError;
-        }
-        // 404 / fork-not-created 不阻断写入 → 让 saveDataToGitHub 触发后端自动 fork
-        console.info(
-          "[SyncManager] getData 返回 fork-not-created，跳过直接进行 save（后端将自动 createFork）",
-        );
+        // 读取失败（网络/服务错误）→ 抛出，写入也会失败，尽早失败更清晰
+        throw readError;
       }
 
       // 字段级合并（pull-before-push）：
-      // 取代原先「整文件比较 → 冲突即死锁」的逻辑。无论是否存在版本号记录，
-      // 都先把远端拉下来与本地合并，再整体回写两端。多设备各自新增不同站点
-      // / 分类会自动合并，同 id 站点按 updatedAt last-writer-wins，从根本上消除
-      // 「冲突死锁」与「静默覆盖」两类数据风险。
+      // 无论是否存在版本号记录，都先把远端拉下来与本地合并，再整体回写两端。
+      // 多设备各自新增不同站点 / 分类会自动合并，同 id 站点按 updatedAt last-writer-wins。
       const commitMessage = `[skip ci] Auto sync ${new Date().toISOString()}`;
       const newVersion = incrementDataVersion();
-      const remoteVersion = (githubData as unknown as { _version?: number })._version;
+      const remoteVersion = (remoteData as unknown as { _version?: number })._version;
 
-      if (githubData) {
-        const { merged, overlaps } = mergeNavData(data, githubData);
+      if (remoteData) {
+        const { merged, overlaps } = mergeNavData(data, remoteData);
         if (overlaps.length > 0) {
           console.info(
             `[SyncManager] 合并发现 ${overlaps.length} 处同 id 站点两端都改过，已按 updatedAt 取较新一方：${overlaps.join(", ")}`,
@@ -592,12 +572,12 @@ export class SyncManager {
 
         // 写回本地 + 上传合并结果
         saveToLocalStorage(merged);
-        await saveDataToGitHub(liveToken, merged, commitMessage);
+        await saveDataToDb(merged, commitMessage);
         setLastSyncTime(merged);
       } else {
-        // 远端无数据（首次推送 / fork 尚未就绪 / 404）→ 直接上传本地
+        // 远端无数据（首次使用数据库）→ 直接上传本地
         const dataWithVersion = { ...data, _version: newVersion } as NavData;
-        await saveDataToGitHub(liveToken, dataWithVersion, commitMessage);
+        await saveDataToDb(dataWithVersion, commitMessage);
         saveSyncVersion({ localVersion: newVersion, remoteVersion: newVersion });
         setLastSyncTime(data);
       }
@@ -687,19 +667,19 @@ export async function initialSync(token?: string): Promise<NavData | null> {
     return localData;
   }
 
-  // 2. 从 GitHub 拉取
+  // 2. 从数据库拉取
   if (token) {
     try {
-      const { getDataFromGitHub } = await import("./github-storage");
-      const githubData = await getDataFromGitHub(token);
-      if (githubData) {
+      const { getDataFromDb } = await import("./db-storage");
+      const remoteData = await getDataFromDb();
+      if (remoteData) {
         // 保存到本地
-        saveToLocalStorage(githubData);
-        setLastSyncTime(githubData);
-        return githubData;
+        saveToLocalStorage(remoteData);
+        setLastSyncTime(remoteData);
+        return remoteData;
       }
     } catch (error) {
-      console.error("从 GitHub 拉取失败:", error);
+      console.error("从数据库拉取失败:", error);
     }
   }
 
