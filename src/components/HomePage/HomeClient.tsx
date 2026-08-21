@@ -1,103 +1,70 @@
 /**
- * 首页客户端交互层（2026-08-21 重构）
+ * 首页客户端交互层（纯只读展示，2026-08-21 重构）
  *
- * 新布局：左导航（Sidebar）+ 右侧主区（顶部操作栏 + 当前分类卡片网格）
- * - 默认显示一个分类（切换式显示，避免 4378 条链接堆一长页）
- * - 全局搜索：跨所有分类过滤，输入时显示全屏搜索结果
- * - 子路径标签：在当前分类内多选筛选（OR 逻辑）
- * - 来源标识：description 中的 "来源: xx" 渲染为徽章
- *
- * 服务端 RootLayout 已 SSR 注入 initialSites（数据库直读，首屏秒开），
- * DataContext 初始化优先用 SSR 数据保证 SSR/CSR 一致。
+ * 数据由服务端 page.tsx 直读 Turso 注入 initialSites（SSR 秒开），
+ * 本组件只做展示交互：左导航切换分类、全局搜索、子主题标签筛选、网格/列表切换。
+ * 无编辑、无删除、无同步 —— 数据由 navdata 工具链维护。
  */
 
 "use client";
 
-import { useState, useEffect, lazy, Suspense, useMemo } from "react";
-import {
-  useSitesData,
-  useLoadingState,
-  useErrorState,
-  useCategoryOperations,
-  useSitesWithUpdate,
-} from "@/contexts/DataContext";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageContainer } from "@/components/layout/PageContainer";
-import { ImportExportDialog } from "@/components/ImportExportDialog";
-import { StaticBoard } from "@/components/HomePage/StaticBoard";
 import { Sidebar } from "@/components/HomePage/Sidebar";
 import { SubPathFilter } from "@/components/HomePage/SubPathFilter";
-import { SiteCard } from "@/components/SiteCard";
-import { Menu, X, Search } from "lucide-react";
+import { StaticBoard } from "@/components/HomePage/StaticBoard";
+import { EmptyState } from "@/components/HomePage/EmptyState";
+import { HomeSkeleton } from "@/components/HomePage/HomeSkeleton";
+import { Menu, Search, X } from "lucide-react";
+import type { Category, Site } from "@/types";
 
-// 导入拆分后的子组件和 Hooks
-import {
-  CategoryManager,
-  ActionBar,
-  EmptyState,
-  HomeSkeleton,
-} from "@/components/HomePage";
+export default function HomeClient({
+  initialSites = [],
+}: {
+  initialSites?: Category[];
+}) {
+  const categories = initialSites;
 
-// 拖拽板（含 dnd-kit）按需懒加载，避免把 @dnd-kit 拉入首页首屏关键 JS
-const SortableBoard = lazy(() =>
-  import("@/components/HomePage/SortableBoard").then((m) => ({
-    default: m.SortableBoard,
-  }))
-);
-
-export default function HomeClient() {
-  const contextSites = useSitesData();
-  const loading = useLoadingState();
-  const { error, clearError } = useErrorState();
-  const { addCategory } = useCategoryOperations();
-  const { updateSites } = useSitesWithUpdate();
-
-  // 过滤墓碑后用于渲染
-  const categories = useMemo(() => contextSites, [contextSites]);
-
-  // 当前选中的分类（受控状态：左导航切换）
+  // 当前选中的分类（左导航切换）
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
     () => categories[0]?.id ?? null
   );
+
+  // 全局搜索词
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // 当前分类内子主题标签筛选（多选 OR）
+  const [subPathSelected, setSubPathSelected] = useState<string[]>([]);
+
+  // 视图模式
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+
+  // 移动端侧栏开关
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
   // 数据变化时若当前 id 失效，回退到第一个分类
   useEffect(() => {
     if (!activeCategoryId || !categories.find((c) => c.id === activeCategoryId)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- 初始化回退：current id 在数据变化时丢失
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 初始化回退
       setActiveCategoryId(categories[0]?.id ?? null);
     }
   }, [categories, activeCategoryId]);
 
-  const activeCategory =
-    categories.find((c) => c.id === activeCategoryId) ?? categories[0];
-
-  // 全局搜索（跨所有分类匹配）
-  const [searchQuery, setSearchQuery] = useState("");
-
-  // 当前分类内子路径标签筛选（多选 OR）
-  const [subPathSelected, setSubPathSelected] = useState<string[]>([]);
   // 切换分类时清除标签筛选
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 切换分类时重置筛选条件（语义化 reset）
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 切换分类重置筛选
     setSubPathSelected([]);
   }, [activeCategoryId]);
 
-  // 视图模式（卡片网格 / 紧凑列表）
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-
-  // 导入导出对话框
-  const [showImportExport, setShowImportExport] = useState(false);
-
-  // 移动端侧栏开关
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const activeCategory =
+    categories.find((c) => c.id === activeCategoryId) ?? categories[0];
 
   // ============ 全局搜索结果（跨所有分类） ============
   const globalSearchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return null;
-    const results: Array<{
-      category: typeof categories[number];
-      sites: typeof categories[number]["sites"];
-    }> = [];
+    const results: Array<{ category: Category; sites: Site[] }> = [];
     for (const cat of categories) {
       const matched = cat.sites.filter((s) => {
         const haystack = `${s.title}\n${s.description ?? ""}\n${s.url}`.toLowerCase();
@@ -108,9 +75,9 @@ export default function HomeClient() {
     return results;
   }, [categories, searchQuery]);
 
-  // ============ 当前分类展示数据（搜索时为空） ============
+  // ============ 当前分类展示数据 ============
   const currentCategorySites = useMemo(() => {
-    if (globalSearchResults) return []; // 搜索态不展示单个分类
+    if (globalSearchResults) return [];
     if (!activeCategory) return [];
     if (subPathSelected.length === 0) return activeCategory.sites;
     return activeCategory.sites.filter((s) => {
@@ -119,36 +86,38 @@ export default function HomeClient() {
     });
   }, [activeCategory, subPathSelected, globalSearchResults]);
 
-  // ============ 全局快捷键 ============
+  // 切换分类：清除搜索与筛选
+  const handleCategoryChange = useCallback((id: string) => {
+    setActiveCategoryId(id);
+    setSearchQuery("");
+    setMobileSidebarOpen(false);
+  }, []);
+
+  // 跳转分类（从搜索结果点击）
+  const handleJumpToCategory = useCallback((id: string) => {
+    setActiveCategoryId(id);
+    setSearchQuery("");
+  }, []);
+
+  // ============ 快捷键 ============
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl/Cmd + Alt + N: 新建分类
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        e.altKey &&
-        !e.shiftKey &&
-        e.key.toLowerCase() === "n"
-      ) {
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent("add-category"));
-      }
-      // Esc: 关闭所有弹窗 / 清除搜索
-      if (e.key === "Escape") {
-        if (searchQuery) setSearchQuery("");
-        else window.dispatchEvent(new CustomEvent("close-all-dialogs"));
-      }
       // Ctrl/Cmd + K: 聚焦搜索框
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent("focus-global-search"));
       }
+      // Esc: 清除搜索
+      if (e.key === "Escape") {
+        setSearchQuery("");
+      }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [searchQuery]);
+  }, []);
 
-  // 首屏加载（无本地缓存、无数据）时展示 skeleton
-  if (loading && categories.length === 0) {
+  // 首屏加载（无数据）时展示 skeleton
+  if (categories.length === 0) {
     return (
       <AppLayout>
         <PageContainer>
@@ -168,11 +137,7 @@ export default function HomeClient() {
         <Sidebar
           categories={categories}
           activeCategoryId={activeCategory?.id ?? null}
-          onCategoryChange={(id) => {
-            setActiveCategoryId(id);
-            setMobileSidebarOpen(false);
-            setSearchQuery("");
-          }}
+          onCategoryChange={handleCategoryChange}
           mobileOpen={mobileSidebarOpen}
           onMobileClose={() => setMobileSidebarOpen(false)}
         />
@@ -225,38 +190,20 @@ export default function HomeClient() {
               {/* 全局搜索框 */}
               <GlobalSearchBox value={searchQuery} onChange={setSearchQuery} />
 
-              {/* 操作按钮组 */}
-              <div className="flex flex-shrink-0 items-center gap-2 ml-auto">
-                <CategoryManager
-                  categories={categories}
-                  onAddCategory={addCategory}
-                  onUpdateSites={updateSites}
-                  isGuestMode={false}
-                />
-                <ActionBar
-                  viewMode={viewMode}
-                  onViewModeChange={setViewMode}
-                  onImportExport={() => setShowImportExport(true)}
-                />
-              </div>
+              {/* 视图切换 */}
+              <ViewToggle viewMode={viewMode} onChange={setViewMode} />
             </div>
-
-            {/* 错误提示 */}
-            {error && <ErrorBanner error={error} onDismiss={clearError} />}
 
             {/* ========== 主内容区 ========== */}
             {globalSearchResults ? (
               <GlobalSearchResults
                 results={globalSearchResults}
                 viewMode={viewMode}
-                onJumpToCategory={(id) => {
-                  setActiveCategoryId(id);
-                  setSearchQuery("");
-                }}
+                onJumpToCategory={handleJumpToCategory}
               />
             ) : activeCategory ? (
               <div className="space-y-4">
-                {/* 子路径标签筛选 */}
+                {/* 子主题标签筛选 */}
                 <SubPathFilter
                   sites={activeCategory.sites}
                   selected={subPathSelected}
@@ -265,25 +212,10 @@ export default function HomeClient() {
 
                 {/* 卡片网格 */}
                 {currentCategorySites.length > 0 ? (
-                  <Suspense
-                    fallback={
-                      <StaticBoard
-                        categories={[
-                          { ...activeCategory, sites: currentCategorySites },
-                        ]}
-                        viewMode={viewMode}
-                        isGuestMode={false}
-                      />
-                    }
-                  >
-                    <SortableBoard
-                      categories={[{ ...activeCategory, sites: currentCategorySites }]}
-                      filteredCategories={[{ ...activeCategory, sites: currentCategorySites }]}
-                      viewMode={viewMode}
-                      isGuestMode={false}
-                      onUpdateSites={updateSites}
-                    />
-                  </Suspense>
+                  <StaticBoard
+                    categories={[{ ...activeCategory, sites: currentCategorySites }]}
+                    viewMode={viewMode}
+                  />
                 ) : (
                   <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] p-8 text-center text-sm text-[var(--muted-foreground)]">
                     当前筛选下没有匹配的链接
@@ -293,16 +225,12 @@ export default function HomeClient() {
             ) : (
               <EmptyState
                 searchQuery={searchQuery}
-                isGuestMode={false}
                 onClearSearch={() => setSearchQuery("")}
               />
             )}
           </PageContainer>
         </main>
       </div>
-
-      {/* 导入导出对话框 */}
-      <ImportExportDialog open={showImportExport} onOpenChange={setShowImportExport} />
     </AppLayout>
   );
 }
@@ -324,14 +252,7 @@ function GlobalSearchBox({
         type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onFocus={(e) => {
-          window.addEventListener(
-            "focus-global-search",
-            () => e.currentTarget.focus(),
-            { once: true }
-          );
-        }}
-        placeholder="搜索 4378+ 链接（标题/描述/URL）... ⌘K"
+        placeholder="搜索 4000+ 链接（标题/描述/URL）... ⌘K"
         className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-secondary)] py-1.5 pl-8 pr-3 text-sm outline-none transition-colors focus:border-[var(--primary-400)] focus:bg-[var(--background-elevated)]"
       />
     </div>
@@ -339,10 +260,48 @@ function GlobalSearchBox({
 }
 
 /**
+ * 视图切换（网格/列表）
+ */
+function ViewToggle({
+  viewMode,
+  onChange,
+}: {
+  viewMode: "grid" | "list";
+  onChange: (mode: "grid" | "list") => void;
+}) {
+  return (
+    <div className="flex flex-shrink-0 items-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-secondary)] p-0.5">
+      <button
+        type="button"
+        onClick={() => onChange("grid")}
+        className={`cursor-pointer rounded-[var(--radius-sm)] px-2.5 py-1 text-xs transition-colors ${
+          viewMode === "grid"
+            ? "bg-[var(--primary-600)] text-white"
+            : "text-[var(--foreground-secondary)] hover:text-[var(--foreground)]"
+        }`}
+        aria-label="网格视图"
+      >
+        网格
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("list")}
+        className={`cursor-pointer rounded-[var(--radius-sm)] px-2.5 py-1 text-xs transition-colors ${
+          viewMode === "list"
+            ? "bg-[var(--primary-600)] text-white"
+            : "text-[var(--foreground-secondary)] hover:text-[var(--foreground)]"
+        }`}
+        aria-label="列表视图"
+      >
+        列表
+      </button>
+    </div>
+  );
+}
+
+/**
  * 全局搜索结果（按分类分组，可点击跳转）
  */
-import type { Category, Site } from "@/types";
-
 function GlobalSearchResults({
   results,
   viewMode,
@@ -368,48 +327,9 @@ function GlobalSearchResults({
             </span>
             <span className="text-xs text-[var(--primary-600)]">查看该分类 →</span>
           </button>
-          <div
-            className={
-              viewMode === "grid"
-                ? "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-                : "space-y-2"
-            }
-          >
-            {sites.map((site) => (
-              <SiteCard
-                key={site.id}
-                id={site.id}
-                title={site.title}
-                url={site.url}
-                favicon={site.favicon}
-                categoryId={category.id}
-                view={viewMode}
-              />
-            ))}
-          </div>
+          <StaticBoard categories={[{ ...category, sites }]} viewMode={viewMode} />
         </section>
       ))}
-    </div>
-  );
-}
-
-function ErrorBanner({
-  error,
-  onDismiss,
-}: {
-  error: string;
-  onDismiss: () => void;
-}) {
-  return (
-    <div className="mb-4 flex items-center justify-between gap-2 rounded-[var(--radius-lg)] border border-[var(--error)]/20 bg-[var(--error)]/10 p-4 text-[var(--error)]">
-      <span>{error}</span>
-      <button
-        onClick={onDismiss}
-        className="flex-shrink-0 cursor-pointer p-1 text-[var(--error)] transition-colors hover:text-[var(--error)]/70"
-        aria-label="关闭错误提示"
-      >
-        ✕
-      </button>
     </div>
   );
 }

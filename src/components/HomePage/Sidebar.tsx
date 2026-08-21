@@ -15,7 +15,6 @@
 
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { visibleCategories } from "@/lib/utils/tombstone";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { Category } from "@/types";
 
@@ -35,7 +34,8 @@ export function Sidebar({
   mobileOpen,
   onMobileClose,
 }: SidebarProps) {
-  const visible = visibleCategories(categories);
+  // 数据由 page.tsx 服务端过滤墓碑后传入，这里直接使用
+  const visible = categories;
   const active = visible.find((c) => c.id === activeCategoryId) ?? visible[0];
 
   // 桌面端折叠态（窄屏隐藏为图标列）

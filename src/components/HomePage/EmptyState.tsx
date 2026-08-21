@@ -1,40 +1,33 @@
 /**
- * 空状态组件
+ * 空状态组件（纯只读展示）
  * 显示无数据或无搜索结果时的友好提示
  */
 
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { IconSearch, IconBook } from "@/components/icons";
 
 interface EmptyStateProps {
   searchQuery: string;
-  isGuestMode: boolean;
   onClearSearch: () => void;
 }
 
-export function EmptyState({
-  searchQuery,
-  isGuestMode,
-  onClearSearch,
-}: EmptyStateProps) {
+export function EmptyState({ searchQuery, onClearSearch }: EmptyStateProps) {
   // 搜索结果为空
   if (searchQuery) {
     return (
       <div className="empty-state card p-12">
         <div className="empty-state-icon">
-          <IconSearch className="w-8 h-8 text-[var(--muted-foreground)]" />
+          <IconSearch className="h-8 w-8 text-[var(--muted-foreground)]" />
         </div>
         <div className="empty-state-title">未找到匹配内容</div>
         <div className="empty-state-description">尝试调整搜索词</div>
-        <Button
-          variant="outline"
+        <button
           onClick={onClearSearch}
-          className="mt-4"
+          className="mt-4 cursor-pointer rounded-[var(--radius-md)] border border-[var(--border)] px-4 py-2 text-sm text-[var(--foreground-secondary)] transition-colors hover:bg-[var(--muted)]"
         >
           清除搜索
-        </Button>
+        </button>
       </div>
     );
   }
@@ -43,20 +36,12 @@ export function EmptyState({
   return (
     <div className="empty-state card p-12">
       <div className="empty-state-icon">
-        <IconBook className="w-8 h-8 text-[var(--muted-foreground)]" />
+        <IconBook className="h-8 w-8 text-[var(--muted-foreground)]" />
       </div>
       <div className="empty-state-title">暂无分类</div>
       <div className="empty-state-description">
-        {isGuestMode
-          ? "请登录后添加分类和站点"
-          : "点击下方的按钮添加第一个分类，开始管理你的导航"}
+        数据由 navdata 工具链维护，请运行数据导入脚本
       </div>
-      {!isGuestMode && (
-        <div className="mt-4 text-xs text-[var(--muted-foreground)]">
-          <span className="kbd">Ctrl/Cmd</span> + <span className="kbd">Alt</span>{" "}
-          + <span className="kbd">N</span> 快速新建
-        </div>
-      )}
     </div>
   );
 }

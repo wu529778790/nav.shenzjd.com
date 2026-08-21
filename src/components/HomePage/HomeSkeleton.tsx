@@ -1,9 +1,5 @@
 /**
  * 首页加载中骨架屏
- *
- * 用于替换首屏无味加载的"暂无分类"EmptyState 闪烁，
- * 在 DataContext 完成首次远程拉取前展示，
- * 传达"数据正在加载中"而非"内容不存在"的语义。
  */
 
 export function HomeSkeleton() {

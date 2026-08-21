@@ -42,49 +42,8 @@ export interface NavData {
   _version?: number;
 }
 
-/** 认证用户信息 */
-export interface AuthUser {
-  id: string;
-  name: string;
-  avatar: string;
-}
-
 /** 运行时公共配置 */
 export interface RuntimePublicConfig {
   githubOwner: string;
   githubRepo: string;
-}
-
-/** 同步相关类型 */
-export type SyncStep =
-  | "prepare"
-  | "fetching"
-  | "comparing"
-  | "uploading"
-  | "downloading"
-  | "merging"
-  | "done";
-
-export interface SyncStepInfo {
-  step: SyncStep;
-  label: string;
-  progress: number; // 0-100
-}
-
-export interface SyncResult {
-  success: boolean;
-  direction: "upload" | "download" | "none";
-  conflictResolved?: boolean;
-  message?: string;
-  error?: string;
-}
-
-export enum SyncStatus {
-  IDLE = "🟢",
-  SYNCING = "🟡",
-  UPLOADING = "⬆️",
-  DOWNLOADING = "⬇️",
-  CONFLICT = "⚠️",
-  ERROR = "🔴",
-  OFFLINE = "⚪",
 }
