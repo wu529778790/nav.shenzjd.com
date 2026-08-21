@@ -91,7 +91,7 @@ page.tsx (SSR) → readNavData() 直读 Turso → 过滤墓碑 → 注入 initia
 ```
 
 - 数据流单向、只读：服务端读取 → SSR 注入 → 客户端渲染。无 `localStorage`、无客户端写入。
-- 安全响应头（CSP / HSTS 等）由 `src/middleware.ts`（Next 16 中即 proxy）统一注入，策略来自 `src/lib/runtime-policies.ts`。
+- 安全响应头（CSP / HSTS 等）由 `src/proxy.ts`（Next 16 约定）统一注入，策略来自 `src/lib/runtime-policies.ts`。
 - favicon 经 `/api/favicon` 代理并缓存，避免外链泄露与首屏阻塞。
 
 ## 文件结构

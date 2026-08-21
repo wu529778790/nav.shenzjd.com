@@ -45,17 +45,15 @@ page.tsx (SSR) → readNavData() reads Turso → filters tombstones → injects 
 - `src/components/FaviconImage.tsx` — favicon with proxy fallback.
 - `src/components/ErrorBoundary.tsx` — catch render errors (defensive only; no external consumers).
 - `src/lib/server/turso.ts` — Turso (libsql) data layer (server-only).
-- `src/lib/runtime-policies.ts` — CSP header builder (called from middleware/proxy).
+- `src/lib/runtime-policies.ts` — CSP header builder (called from proxy).
 - `src/lib/favicon-url.ts`, `src/lib/server/safe-external-fetch.ts` — favicon proxy helpers.
 - `src/lib/utils.ts` — `cn()` (clsx + tailwind-merge).
 - `src/data/sites.json` — committed seed fallback (used by sitemap; runtime data is in Turso).
 - `scripts/` — `import-axutongxue.mjs` (axutongxue → Turso tree import), `reset-tables.mjs` (rebuild tables), `sync-standalone-assets.mjs` (run after build), `submit-sitemap.mjs` (CI sitemap submission).
 
-### Middleware & Security Headers
+### Proxy & Security Headers
 
-Middleware lives at `src/middleware.ts` (not root-level). It sets CSP, HSTS, X-Frame-Options, Referrer-Policy, and Permissions-Policy on all non-static responses. CSP is dynamically built via `buildContentSecurityPolicy()` from `src/lib/runtime-policies.ts`.
-
-> Note: Next.js 16 deprecates the `middleware` convention in favor of `proxy`. The file is still `src/middleware.ts` and works, but a future migration to `src/proxy.ts` is recommended.
+Proxy lives at `src/proxy.ts` (Next 16 convention, was `middleware.ts`; not root-level). It sets CSP, HSTS, X-Frame-Options, Referrer-Policy, and Permissions-Policy on all non-static responses. CSP is dynamically built via `buildContentSecurityPolicy()` from `src/lib/runtime-policies.ts`.
 
 ### Deployment
 
