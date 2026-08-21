@@ -2,8 +2,6 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
-import { UpdateBanner } from "@/components/UpdateBanner";
 
 // Plus Jakarta Sans（可变字体，自托管于 src/fonts，避免构建期依赖 Google Fonts）
 // display=optional 避免阻塞首屏渲染；preload 让字体随首屏关键资源一起加载。
@@ -64,11 +62,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className={plusJakarta.variable}>
       <body className="antialiased">
-        <ErrorBoundary>
-          <ServiceWorkerRegister />
-          <UpdateBanner />
-          {children}
-        </ErrorBoundary>
+        <ErrorBoundary>{children}</ErrorBoundary>
       </body>
     </html>
   );
