@@ -1,33 +1,30 @@
-# NavHub · 导航站
+# NavHub · 树形导航站
 
-> 一个简单的导航 / 书签管理网站。书签数据存储在 **Turso (libsql) 数据库**中——毫秒级读写、多设备实时同步，支持拖拽排序，数据随时可导出、可迁移。
+> 一个纯展示型的个人导航站。书签数据来自 [阿虚同学的储物间](https://axutongxue.com) 等精选来源，以**树形分类**组织，服务端直读 **Turso (libsql)** 数据库，首屏 SSR 秒开。无登录、无编辑、无同步——数据由 `navdata` 工具链维护。
 
-![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js) ![React](https://img.shields.io/badge/React-19-61dafb?logo=react) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript) ![Tailwind CSS v4](https://img.shields.io/badge/Tailwind_CSS-v4-38bdf8?logo=tailwindcss) ![License](https://img.shields.io/badge/License-MIT-green) ![CI](https://img.shields.io/github/actions/workflow/status/wu529778790/navhub.shenzjd.com/docker.yml)
+![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js) ![React](https://img.shields.io/badge/React-19-61dafb?logo=react) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript) ![Tailwind CSS v4](https://img.shields.io/badge/Tailwind_CSS-v4-38bdf8?logo=tailwindcss) ![Turso](https://img.shields.io/badge/Storage-Turso-7C3AED) ![License](https://img.shields.io/badge/License-MIT-green) ![CI](https://img.shields.io/github/actions/workflow/status/wu529778790/navhub.shenzjd.com/docker.yml)
 
-## 为什么用数据库存储？
+## 特性
 
-早期版本把书签存在 GitHub 仓库里（每次同步都是一次 Git 提交），换来的是**慢**——GitHub API 限流、请求延迟高。NavHub 现已切换为 Turso 数据库：
+- **树形分类导航** — 左侧递归树，整行可点击；文件夹图标 = 可下钻分类，链接图标 = 直达站点。默认收起，导航时自动展开当前路径。
+- **首屏 SSR 秒开** — 服务端直读 Turso 渲染当前分类的站点网格与子分类入口，无骨架屏、无客户端等待。
+- **全局搜索** — `⌘K` 唤起，跨整棵树全文检索，结果按顶级分类分组。
+- **极简视觉** — Vercel / Linear 风格单色设计：白底、黑字、黄色强调（`#FFD400`）、1px 边框、无阴影（无暗色模式）。
+- **响应式** — 桌面端固定左树 + 内容区；移动端折叠为抽屉式树。
 
-- **毫秒级读写** — 数据在东京节点（aws-ap-northeast-1），SSR 直读数据库，首屏秒开
-- **全站私有** — 无登录、无访客模式，访问即读写，数据只属于你自己
-- **规范化多表** — categories / sites 分表存储 + 外键 + 索引，事务内原子写入
-- **可迁移** — 数据可随时通过导入 / 导出功能备份为 JSON
+## 技术栈
 
-## 功能
-
-- **实时同步** — 操作即时生效，3 秒防抖自动写入数据库；字段级合并（拉取-合并-推送），多设备各改各的互不覆盖
-- **首屏 SSR** — 服务端直读数据库渲染书签网格，无骨架屏等待
-- **离线可用** — Service Worker 缓存优先，断网也能正常浏览，网络恢复后自动补同步
-- **拖拽排序** — 分类与站点支持拖拽重新排序（dnd-kit 懒加载，不拖慢首屏）
-- **删除跨设备传播** — 墓碑（tombstone）机制：在一台设备上删除，其他设备同步后也会消失，不会"复活"
-- **URL 元数据解析** — 添加站点时自动抓取标题、favicon、描述
-- **导入 / 导出** — 书签数据一键备份与恢复
+- Next.js 16（App Router）+ React 19 + TypeScript（strict）
+- Tailwind CSS v4（CSS-first 配置，无 `tailwind.config.js`）
+- Turso / libsql（服务端数据库，树形 `categories` + `sites` 表）
+- Plus Jakarta Sans 自托管可变字体
+- Vitest（测试）
 
 ## 快速开始
 
-### 1. 创建 Turso 数据库
+### 1. 准备 Turso 数据库
 
-在 [Turso](https://turso.tech) 创建数据库，获取 URL 和 auth token。
+在 [Turso](https://turso.tech) 创建数据库，获取数据 URL 与 auth token。
 
 ### 2. 配置环境变量
 
@@ -35,94 +32,101 @@
 cp .env.example .env.local
 ```
 
-编辑 `.env.local`：
-
 | 变量 | 说明 |
 | --- | --- |
 | `TURSO_DATABASE_URL` | 必填，数据库连接 URL（如 `libsql://xxx.turso.io`） |
-| `TURSO_AUTH_TOKEN` | 必填，数据库访问令牌（服务端专用，切勿提交到仓库） |
+| `TURSO_AUTH_TOKEN` | 必填，访问令牌（服务端专用，切勿提交到仓库） |
 
-> Docker 部署时环境变量在**容器运行时**注入即可，不依赖镜像构建阶段——镜像一次构建、多环境复用。
+> Docker 部署时环境变量在**容器运行时**注入即可，不依赖镜像构建阶段。
 
-### 3. 运行
+### 3. 导入数据（首次部署）
+
+数据由外部 `navdata` 工具链产出。将阿虚同学储物间数据灌入 Turso：
+
+```bash
+# 重建表结构（如需）
+node scripts/reset-tables.mjs
+# 导入（默认读取 ~/github/navdata/data/axutongxue.json）
+node scripts/import-axutongxue.mjs [--source <path>] [--dry-run]
+```
+
+环境变量从仓库根 `.env.local` 读取。
+
+### 4. 运行
 
 ```bash
 npm install
-npm run dev
+npm run dev      # http://localhost:3000
 ```
-
-访问 `http://localhost:3000`。
 
 ## Docker 部署
 
-```bash
-docker pull ghcr.io/wu529778790/navhub.shenzjd.com:main
+镜像由 GitHub Actions 自动构建并推送至 GHCR（多阶段构建 + Next.js `standalone` 输出）。容器运行时注入 Turso 环境变量即可：
 
+```bash
 docker run -d -p 3000:3000 \
   -e TURSO_DATABASE_URL=libsql://xxx.turso.io \
   -e TURSO_AUTH_TOKEN=your_token \
   ghcr.io/wu529778790/navhub.shenzjd.com:main
 ```
 
-镜像由 GitHub Actions 自动构建并推送到 GHCR（Dockerfile 采用多阶段构建 + Next.js standalone 输出）。
-
 ## 数据模型
 
-```text
-NavData { version, lastModified, categories[] }
-└── Category { id, name, icon?, sort, sites[] }
-    └── Site { id, title, url, favicon?, description?, sort? }
-```
-
-数据库中规范化为两张表 + 元数据表：
+Turso 中规范化为三张表：
 
 ```text
-categories { id, name, icon, sort, _deleted, deleted_at, updated_at }
-sites      { id, category_id(FK), title, url, favicon, description, sort, ... }
-nav_meta   { key, value }  -- version / lastModified / _version
+categories { id, name, parent_id(NULL=顶级), sort, ... }
+sites      { id, category_id(FK), title, url, favicon, description, ... }
+nav_meta   { key, value }
 ```
 
-## 同步机制
+- `categories` 通过 `parent_id` 自引用构成任意深度的树（当前数据最深 5 层，14 个顶级分类，约 2757 个站点）。
+- `sites.description === "备用地址"` 表示「备用链接」，前端以灰色 chip 标记。
+- `src/data/sites.json` 为兜底种子（sitemap 生成时使用），运行时数据以 Turso 为准。
+
+## 架构
 
 ```text
-用户操作 → localStorage（即时）→ UI 更新 → 3 秒防抖 → /api/data → Turso 数据库
+page.tsx (SSR) → readNavData() 直读 Turso → 过滤墓碑 → 注入 initialCategories → HomeClient
 ```
 
-- **localStorage 为即时层**：操作先落本地，秒级响应，再异步同步
-- **字段级合并**：同步前先拉取远端，按 `id` 做并集合并、以 `updatedAt` 判定最新版本，两端各自修改的内容都能保留
-- **墓碑删除**：删除操作打上 `_deleted` 标记而非物理删除，跨设备同步时删除传播、避免复活
-- **冲突防护**：基于指纹识别双方"最后一次同步点之后都改过"的情况，拒绝静默覆盖
-- **重试策略**：指数退避自动重试，网络抖动不丢数据
-- **SSR 秒开**：RootLayout 服务端直读数据库注入 `initialSites`，首屏 HTML 即含完整书签网格
+- 数据流单向、只读：服务端读取 → SSR 注入 → 客户端渲染。无 `localStorage`、无客户端写入。
+- 安全响应头（CSP / HSTS 等）由 `src/middleware.ts`（Next 16 中即 proxy）统一注入，策略来自 `src/lib/runtime-policies.ts`。
+- favicon 经 `/api/favicon` 代理并缓存，避免外链泄露与首屏阻塞。
 
-## 技术栈
+## 文件结构
 
-- Next.js 16（App Router）+ React 19 + TypeScript（strict）
-- Tailwind CSS v4 + shadcn/ui
-- @dnd-kit（拖拽排序，React.lazy 懒加载）
-- @libsql/client（Turso 数据库驱动）
-- Zod（输入校验 + XSS 过滤）
-- Vitest（测试）
+```text
+src/
+  app/
+    layout.tsx           # 根布局（自托管字体 + ErrorBoundary）
+    page.tsx             # SSR 直读 Turso，装配 HomeClient
+    globals.css          # 极简单色主题（CSS 变量 + @theme inline）
+    api/favicon/         # favicon 代理
+    robots.ts / sitemap.ts
+  components/
+    layout/    AppHeader, AppLayout
+    HomePage/  Sidebar, HomeClient, StaticBoard, BentoGrid
+    FaviconImage, ErrorBoundary
+  lib/
+    server/turso.ts      # Turso 数据层（树形读取/写入）
+    runtime-policies.ts  # CSP 头构造
+    favicon-url.ts, utils.ts (cn)
+scripts/                 # import-axutongxue, reset-tables, sync-standalone-assets, submit-sitemap
+```
 
 ## 开发
 
 ```bash
-npm run dev              # 开发服务器（localhost:3000）
-npm run build            # 生产构建（next build + 同步 standalone 静态资源）
-npm run lint             # ESLint
-npm run type-check       # TypeScript 类型检查
-npm test -- --run        # 运行测试（vitest，一次性）
-npm run format           # Prettier 格式化
+npm run dev          # 开发服务器
+npm run build        # 生产构建（next build + 同步 standalone 静态资源）
+npm run lint         # ESLint
+npm run type-check   # tsc --noEmit
+npm test -- --run    # 运行测试（Vitest，一次性）
+npm run format       # Prettier 格式化
 ```
 
-CI（GitHub Actions）按 `lint → type-check → test → build` 顺序执行，通过后自动构建 Docker 镜像并部署。
-
-## 安全
-
-- **Token 服务端隔离** — Turso token 存于服务端环境变量，前端只通过 `/api/data` 代理读写
-- **CSRF 防护** — API 请求经过 Origin 校验；接口带速率限制
-- **输入校验** — 用户输入经 Zod 校验与 XSS 过滤
-- **安全响应头** — CSP、HSTS、X-Frame-Options 等由中间件统一注入
+CI 顺序：`lint → type-check → test --run → build`，通过后自动构建镜像并部署。
 
 ## License
 

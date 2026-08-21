@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A personal navigation/bookmarks site ("NavHub") built with Next.js 16 App Router, React 19, and Tailwind CSS v4. Users manage categorized bookmarks that sync bidirectionally with a **Turso (libsql) database** (`categories` / `sites` / `nav_meta` tables). Since 2026-08-21 it is **private-site mode**: no GitHub OAuth, no guest mode — visit and edit directly. Supports offline via service worker, drag-and-drop reordering, and SSR first paint (RootLayout reads the DB server-side).
+A **pure read-only** personal navigation/bookmarks site ("NavHub") built with Next.js 16 App Router, React 19, and Tailwind CSS v4. Bookmarks are organized as a **tree** of categories sourced from 阿虚同学的储物间 (axutongxue) and served from a **Turso (libsql) database**. There is **no login, no editing, no deletion, and no client-side sync** — the data is maintained entirely by external `navdata` tooling and imported into Turso via scripts. The UI is a Vercel/Linear-style minimal monochrome design.
 
 ## Commands
 
@@ -20,72 +20,61 @@ npm run test:ui                  # Vitest with browser UI
 npm run test:coverage            # Vitest with v8 coverage
 ```
 
-Single test: `npx vitest run src/lib/errors.test.ts`
+Single test: `npx vitest run src/lib/favicon-url.test.ts`
 Run all tests once (non-watch): `npm test -- --run`
 
 Test setup lives in `src/test/setup.ts` (configured in `vitest.config.ts`). Coverage excludes `src/test/`, `node_modules/`, `*.d.ts`, and config files.
 
 ## Architecture
 
-### Data Flow
+### Data Flow (read-only)
 
+```text
+page.tsx (SSR) → readNavData() reads Turso → filters tombstones → injects initialCategories → HomeClient
 ```
-User action → localStorage (instant) → UI update → 3s debounce → /api/data → Turso database
-```
 
-- **localStorage** (`src/lib/storage/local-storage.ts`): Instant client-side layer, key `nav_data`
-- **Sync engine** (`src/lib/storage/sync-manager.ts`): Bidirectional sync with fingerprint-based conflict detection (rejects silent overwrite when both sides changed since last sync), 3s debounce, exponential backoff retry
-- **DB client** (`src/lib/server/turso.ts`): Server-side Turso client; `readNavData()` / `writeNavData()` (transactional full-snapshot write into normalized tables)
-- **Server proxy** (`src/app/api/data/route.ts`): Reads/writes Turso; no auth (private-site mode)
-
-### Data Model
-
-`NavData { version, lastModified, categories[] }` → `Category { id, name, icon?, sort, sites[] }` → `Site { id, title, url, favicon?, description?, sort? }`
+- Data flows in one direction: server reads → SSR injects → client renders. There is **no localStorage and no client write path**.
+- `src/lib/server/turso.ts` is the server-only DB layer: three tables `categories` / `sites` / `nav_meta`. `categories` uses a self-referencing `parent_id` to form an arbitrary-depth tree (current data is 5 levels deep, 14 top-level categories, ~2757 sites). `readNavData()` assembles the recursive tree; `writeNavData()` flattens and writes transactionally (used by import scripts only).
+- `src/app/page.tsx` reads the DB server-side and SSR-injects the tree into `HomeClient`. No `/api/data` frontend interface exists.
 
 ### Key Directories
 
-- `src/app/` — App Router pages and API routes (`/api/data`, `/api/url/parse`, `/api/favicon`, `/api/runtime-config`)
-- `src/components/ui/` — shadcn/ui primitives (Radix-based: button, dialog, input, alert-dialog, toast)
-- `src/components/layout/` — AppHeader, AppLayout, BottomNav, Container, PageContainer
-- `src/contexts/SitesContext.tsx` — Single context for all categories/sites CRUD, sync state, guest mode
-- `src/lib/storage/` — localStorage, DB storage, sync manager
-- `src/lib/server/turso.ts` — Turso (libsql) database layer (server-only)
-- `src/lib/validation.ts` — Zod schemas + XSS sanitization for all user inputs
-- `src/lib/security.ts` — Rate limiting, origin validation, CSRF protection
-- `src/lib/runtime-policies.ts` — CSP header builder (called from middleware)
-- `src/lib/services/url-parser.ts` — URL metadata extraction (title, favicon, description)
-- `src/lib/utils/import-export.ts` — Import/export bookmarks logic
-- `src/data/sites.json` — Default seed data (fallback when DB not configured)
+- `src/app/` — App Router pages and API routes (`/api/favicon` only). `layout.tsx` (self-hosted font + ErrorBoundary), `page.tsx` (SSR), `globals.css` (theme), `robots.ts`, `sitemap.ts` (uses the `src/data/sites.json` seed).
+- `src/components/layout/` — `AppHeader` (logo + global search with `⌘K`), `AppLayout`.
+- `src/components/HomePage/` — `Sidebar` (recursive tree; collapsed by default, whole-row clickable, folder icon = category, link icon = leaf site), `HomeClient` (assembles header + sidebar + main: breadcrumb, Bento subcategory grid, static site board, global search), `StaticBoard` (`StaticSiteCard`: favicon + title + "备用链接" chip for `description === "备用地址"`), `BentoGrid` (`BentoSubCategoryGrid`: uniform folder cards).
+- `src/components/FaviconImage.tsx` — favicon with proxy fallback.
+- `src/components/ErrorBoundary.tsx` — catch render errors (defensive only; no external consumers).
+- `src/lib/server/turso.ts` — Turso (libsql) data layer (server-only).
+- `src/lib/runtime-policies.ts` — CSP header builder (called from middleware/proxy).
+- `src/lib/favicon-url.ts`, `src/lib/server/safe-external-fetch.ts` — favicon proxy helpers.
+- `src/lib/utils.ts` — `cn()` (clsx + tailwind-merge).
+- `src/data/sites.json` — committed seed fallback (used by sitemap; runtime data is in Turso).
+- `scripts/` — `import-axutongxue.mjs` (axutongxue → Turso tree import), `reset-tables.mjs` (rebuild tables), `sync-standalone-assets.mjs` (run after build), `submit-sitemap.mjs` (CI sitemap submission).
 
 ### Middleware & Security Headers
 
 Middleware lives at `src/middleware.ts` (not root-level). It sets CSP, HSTS, X-Frame-Options, Referrer-Policy, and Permissions-Policy on all non-static responses. CSP is dynamically built via `buildContentSecurityPolicy()` from `src/lib/runtime-policies.ts`.
 
-### Auth Flow
-
-Private-site mode (since 2026-08-21): no auth. `AuthContext` is always authenticated (`isAuthenticated=true`, `isGuestMode=false`, `authUser=null`). All GitHub OAuth routes, server-side GitHub client, and fork logic have been removed.
+> Note: Next.js 16 deprecates the `middleware` convention in favor of `proxy`. The file is still `src/middleware.ts` and works, but a future migration to `src/proxy.ts` is recommended.
 
 ### Deployment
 
-Build uses Next.js standalone output (`output: "standalone"` in `next.config.ts`). The `npm run build` script runs `scripts/sync-standalone-assets.mjs` after `next build` to copy static assets into the standalone directory. Docker image (`Dockerfile`) uses multi-stage build and runs `node server.js` directly.
+Build uses Next.js standalone output (`output: "standalone"` in `next.config.ts`). The `npm run build` script runs `scripts/sync-standalone-assets.mjs` after `next build` to copy static assets into the standalone directory. Docker image (`Dockerfile`) uses multi-stage build and runs `node server.js`. CI deploys via SSH to the production server.
 
-### Patterns
+### Styling
 
-- **State**: Single React Context (`SitesContext`), accessed via `useSites()` hook. No external state library.
-- **Styling**: Tailwind CSS v4 with CSS-based config (no `tailwind.config.js`). CSS custom properties in `globals.css` define color palette, dark mode via `prefers-color-scheme`.
-- **Components**: shadcn/ui pattern with `cn()` utility (clsx + tailwind-merge). Lazy-loaded heavy components (`SortableSites`, `AddCategoryDialog`).
-- **Drag & drop**: `@dnd-kit` (core, sortable, utilities) for sortable categories and sites.
-- **Storage**: Turso (libsql) via `src/lib/server/turso.ts` — normalized tables, transactional writes. No auth (private site).
-- **Offline**: Service worker (`public/sw.js`) with cache-first strategy for GET requests.
-- **Validation**: Zod v4 schemas for URLs, titles, category names. XSS pattern detection in validation layer.
+- Tailwind CSS v4 with CSS-based config (no `tailwind.config.js`). Theme is CSS-only via `@theme inline` in `src/app/globals.css`. Colors use CSS custom properties (`var(--foreground)`, `var(--background)`, `var(--accent-500)`, etc.), not Tailwind color classes.
+- Single light theme only — **no dark mode**.
+- Component classes are defined in `globals.css` (`@layer components`): `.card`, `.site-card`, `.input`, `.empty-state`, etc. — use these, don't recreate them.
+- `cn()` utility (clsx + tailwind-merge) in `src/lib/utils.ts`.
 
 ## Conventions
 
-- TypeScript strict mode; use `@/*` import alias for `src/*`
-- PascalCase component files, kebab-case utility/hook files
-- Tests colocated as `*.test.ts` near source
-- Prettier: 2 spaces, double quotes, semicolons, 100 char width
-- Commit format: `type(scope): description` (e.g. `feat(sync): improve URL metadata fallback`)
+- TypeScript strict mode; use `@/*` import alias for `src/*`.
+- PascalCase component files, kebab-case utility/hook files.
+- Tests colocated as `*.test.ts` / `*.test.tsx` near source.
+- Prettier: double quotes, semicolons, 100 char width, trailing commas es5.
+- Commit format: `type(scope): description` (e.g. `feat(tree): collapse sidebar by default`).
 
 ## Environment Variables
 
@@ -93,9 +82,7 @@ Copy `.env.example` to `.env.local`:
 - `TURSO_DATABASE_URL` (required, server-only) — Turso database URL (e.g. `libsql://xxx.turso.io`)
 - `TURSO_AUTH_TOKEN` (required, server-only) — Turso auth token (keep secret, never commit)
 
-`NEXT_PUBLIC_GITHUB_OWNER` / `NEXT_PUBLIC_GITHUB_REPO` are optional and only used for the header GitHub link display.
-
 ## Related Files
 
-- `AGENTS.md` — Additional repository guidelines for AI agents
+- `AGENTS.md` — Compact repository guidelines for AI agents
 - `README.md` — User-facing documentation with setup instructions and Docker deployment
