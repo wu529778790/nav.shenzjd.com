@@ -191,7 +191,15 @@ function GlobalSearchResults({
 
 /* ============ 主组件 ============ */
 
-export default function HomeClient({ initialSites = [] }: { initialSites?: Category[] }) {
+export default function HomeClient({
+  initialSites = [],
+  initialReportCounts = {},
+  initialReportedSiteIds = [],
+}: {
+  initialSites?: Category[];
+  initialReportCounts?: Record<string, number>;
+  initialReportedSiteIds?: string[];
+}) {
   const categories = initialSites;
 
   // 当前选中节点 id（树中任意层）
@@ -345,7 +353,11 @@ export default function HomeClient({ initialSites = [] }: { initialSites?: Categ
                 {activeCategory.sites.length > 0 ? (
                   <section>
                     <h2 className="mb-3 text-[13px] font-semibold text-[var(--foreground)]">全部网站</h2>
-                    <StaticBoard sites={activeCategory.sites} />
+                    <StaticBoard
+                      sites={activeCategory.sites}
+                      reportCounts={initialReportCounts}
+                      reportedSiteIds={initialReportedSiteIds}
+                    />
                   </section>
                 ) : (
                   activeCategory.children &&

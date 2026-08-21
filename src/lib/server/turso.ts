@@ -15,7 +15,8 @@ import type { NavData, Category, Site } from "@/types";
 
 let client: Client | null = null;
 
-function getClient(): Client {
+/** 导出给其它服务端模块（如 reports.ts）复用同一 client */
+export function getClient(): Client {
   if (client) return client;
   const url = process.env.TURSO_DATABASE_URL;
   const authToken = process.env.TURSO_AUTH_TOKEN;
@@ -54,13 +55,22 @@ const CREATE_TABLES: string[] = [
     key TEXT PRIMARY KEY,
     value TEXT
   )`,
+  `CREATE TABLE IF NOT EXISTS site_dead_reports (
+    site_id TEXT NOT NULL,
+    anon_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(site_id, anon_id)
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_sites_category ON sites(category_id)`,
   `CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_site_dead_reports_site ON site_dead_reports(site_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_site_dead_reports_anon ON site_dead_reports(anon_id)`,
 ];
 
 let tablesReady: Promise<void> | null = null;
 
-async function ensureTables(): Promise<void> {
+/** 幂等建表（首次调用后缓存），供 reports.ts 等模块调用 */
+export async function ensureTables(): Promise<void> {
   if (!tablesReady) {
     const db = getClient();
     tablesReady = (async () => {

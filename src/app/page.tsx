@@ -6,6 +6,8 @@
  */
 
 import { readNavData } from "@/lib/server/turso";
+import { getReportCounts, getReportedSiteIds } from "@/lib/server/reports";
+import { cookies } from "next/headers";
 import HomeClient from "@/components/HomePage/HomeClient";
 import type { Category, Site } from "@/types";
 
@@ -34,5 +36,27 @@ export default async function Page() {
     console.error("SSR 读取数据库失败，降级为空数据:", error);
   }
 
-  return <HomeClient initialSites={initialSites} />;
+  // 失效标注（M2）：报告数 map + 当前 anon_id 已报的站点（失败降级为空）
+  let initialReportCounts: Record<string, number> = {};
+  let initialReportedSiteIds: string[] = [];
+  try {
+    const store = await cookies();
+    const anonId = store.get("anon_id")?.value;
+    const [counts, reported] = await Promise.all([
+      getReportCounts(),
+      anonId ? getReportedSiteIds(anonId) : Promise.resolve<string[]>([]),
+    ]);
+    initialReportCounts = Object.fromEntries(counts);
+    initialReportedSiteIds = reported;
+  } catch (error) {
+    console.error("SSR 读取失效标注失败，降级为空:", error);
+  }
+
+  return (
+    <HomeClient
+      initialSites={initialSites}
+      initialReportCounts={initialReportCounts}
+      initialReportedSiteIds={initialReportedSiteIds}
+    />
+  );
 }
