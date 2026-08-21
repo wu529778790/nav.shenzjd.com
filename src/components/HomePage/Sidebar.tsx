@@ -97,6 +97,7 @@ function CategoryRow({
   expanded,
   onToggle,
   onSelect,
+  showSites,
 }: {
   node: Category;
   depth: number;
@@ -104,6 +105,8 @@ function CategoryRow({
   expanded: Set<string>;
   onToggle: (id: string) => void;
   onSelect: (id: string) => void;
+  /** 是否展示站点叶子链接：PC 端右侧已展示 → false；移动端无右侧 → true */
+  showSites: boolean;
 }) {
   const hasChildren = (node.children?.length ?? 0) > 0;
   const isActive = node.id === activeCategoryId;
@@ -177,13 +180,14 @@ function CategoryRow({
               expanded={expanded}
               onToggle={onToggle}
               onSelect={onSelect}
+              showSites={showSites}
             />
           ))}
         </div>
       )}
 
-      {/* 站点叶子（叶子分类展开时显示，链接图标直跳）——严格同层同图标：仅无 children 的分类才出现链接层 */}
-      {!hasChildren && node.sites.length > 0 && isExpanded && (
+      {/* 站点叶子（叶子分类展开时显示，链接图标直跳）——PC 端 showSites=false 不展示（右侧已有）；移动端 showSites=true 展示 */}
+      {showSites && !hasChildren && node.sites.length > 0 && isExpanded && (
         <div className="space-y-0.5">
           {node.sites.map((site) => (
             <SiteRow key={site.id} site={site} depth={depth + 1} activeCategoryId={activeCategoryId} />
@@ -295,7 +299,7 @@ export function Sidebar({
     });
   };
 
-  const nav = (
+  const renderNav = (showSites: boolean) => (
     <nav aria-label="分类导航" className="flex h-full min-h-0 flex-col gap-0.5 overflow-y-auto py-2">
       {categories.map((cat) => (
         <CategoryRow
@@ -306,6 +310,7 @@ export function Sidebar({
           expanded={expanded}
           onToggle={toggle}
           onSelect={onCategoryChange}
+          showSites={showSites}
         />
       ))}
     </nav>
@@ -313,7 +318,7 @@ export function Sidebar({
 
   return (
     <>
-      {/* 桌面端：sticky 左列 */}
+      {/* 桌面端：sticky 左列 —— 不展示站点链接（右侧主区已展示） */}
       <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 flex-shrink-0 border-r border-[var(--border)] bg-[var(--background-secondary)] md:block">
         <div className="relative flex h-full flex-col">
           <div className="flex items-center justify-between px-4 py-3">
@@ -322,11 +327,11 @@ export function Sidebar({
               {categories.length}
             </span>
           </div>
-          <div className="min-h-0 flex-1 overflow-hidden px-2">{nav}</div>
+          <div className="min-h-0 flex-1 overflow-hidden px-2">{renderNav(false)}</div>
         </div>
       </aside>
 
-      {/* 移动端：抽屉式 */}
+      {/* 移动端：抽屉式 —— 展示站点链接（无右侧主区，链接需从树里直达） */}
       {mobileOpen && (
         <div className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/40" onClick={onMobileClose} aria-label="关闭分类导航" />
@@ -345,7 +350,7 @@ export function Sidebar({
                   </svg>
                 </button>
               </div>
-              <div className="min-h-0 flex-1 overflow-hidden px-2">{nav}</div>
+              <div className="min-h-0 flex-1 overflow-hidden px-2">{renderNav(true)}</div>
             </div>
           </aside>
         </div>
