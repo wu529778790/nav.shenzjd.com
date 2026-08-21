@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { formatTopCategoryName } from "@/lib/format";
+import { stripTopPrefix } from "@/lib/format";
 import type { Category, Site } from "@/types";
 
 /* ============ 图标 ============ */
@@ -152,7 +152,17 @@ function CategoryRow({
             isActive ? "font-medium text-white" : depth === 0 ? "font-medium" : ""
           )}
         >
-          {depth === 0 ? formatTopCategoryName(node.name, topIndex ?? 0) : node.name}
+          {depth === 0 ? (
+            <>
+              {/* 编号固定 2ch 宽（等宽数字 + 右对齐），名字永远从同一起点开始 */}
+              <span className="mr-1.5 inline-block w-[2ch] text-right font-mono tabular-nums">
+                {String((topIndex ?? 0) + 1).padStart(2, "0")}
+              </span>
+              {stripTopPrefix(node.name)}
+            </>
+          ) : (
+            node.name
+          )}
         </span>
 
         {totalSites > 0 && (
