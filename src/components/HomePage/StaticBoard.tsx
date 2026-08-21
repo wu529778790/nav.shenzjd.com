@@ -44,8 +44,8 @@ function StaticSiteCard({ site }: { site: Site }) {
       title={`${site.title}\n${site.url}`}
       className="site-card group flex min-w-0 flex-col gap-2.5"
     >
-      {/* 顶部行：favicon + 标题 + ⋯ */}
-      <div className="flex w-full items-center gap-2.5">
+      {/* 顶部行：favicon + 标题（最多 2 行，min-h 保持卡片高度统一） */}
+      <div className="flex w-full items-start gap-2.5">
         <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-sm)] bg-[var(--muted)]">
           <FaviconImage
             src={site.favicon}
@@ -55,22 +55,9 @@ function StaticSiteCard({ site }: { site: Site }) {
             iconClassName="h-3.5 w-3.5 text-[var(--muted-foreground)]"
           />
         </span>
-        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-tight text-[var(--foreground)]">
+        <span className="min-w-0 flex-1 line-clamp-2 min-h-[2lh] text-[15px] font-semibold leading-tight text-[var(--foreground)]">
           {site.title}
         </span>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="flex-shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity duration-100 group-hover:opacity-100"
-          aria-hidden
-        >
-          <circle cx="12" cy="5" r="1.5" fill="currentColor" />
-          <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-          <circle cx="12" cy="19" r="1.5" fill="currentColor" />
-        </svg>
       </div>
 
       {/* 描述 / 标签 */}
