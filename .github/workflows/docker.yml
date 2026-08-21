@@ -15,9 +15,7 @@ env:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    env:
-      NEXT_PUBLIC_GITHUB_CLIENT_ID: test
-      GITHUB_CLIENT_SECRET: test
+    # Turso 变量无需在 CI 提供：构建期不连接数据库，运行时由部署环境注入
     steps:
       - uses: actions/checkout@v5
 

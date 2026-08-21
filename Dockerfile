@@ -8,6 +8,7 @@ COPY . .
 
 ENV NODE_ENV=production
 
+# Turso 环境变量在运行时注入（见 docker-compose.yml），构建期无需提供
 RUN npm run build
 
 FROM node:22-alpine AS runner

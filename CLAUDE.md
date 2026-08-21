@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A personal navigation/bookmarks site ("NavHub") built with Next.js 16 App Router, React 19, and Tailwind CSS v4. Users manage categorized bookmarks that sync bidirectionally with GitHub (data stored in `data/sites.json` in the user's forked repo). Supports guest mode (read-only), GitHub OAuth for authenticated editing, offline via service worker, and drag-and-drop reordering.
+A personal navigation/bookmarks site ("NavHub") built with Next.js 16 App Router, React 19, and Tailwind CSS v4. Users manage categorized bookmarks that sync bidirectionally with a **Turso (libsql) database** (`categories` / `sites` / `nav_meta` tables). Since 2026-08-21 it is **private-site mode**: no GitHub OAuth, no guest mode — visit and edit directly. Supports offline via service worker, drag-and-drop reordering, and SSR first paint (RootLayout reads the DB server-side).
 
 ## Commands
 
@@ -30,12 +30,13 @@ Test setup lives in `src/test/setup.ts` (configured in `vitest.config.ts`). Cove
 ### Data Flow
 
 ```
-User action → localStorage (instant) → UI update → 3s debounce → /api/github/data → GitHub API → sites.json
+User action → localStorage (instant) → UI update → 3s debounce → /api/data → Turso database
 ```
 
-- **localStorage** (`src/lib/storage/local-storage.ts`): Primary client-side store, key `nav_data`
+- **localStorage** (`src/lib/storage/local-storage.ts`): Instant client-side layer, key `nav_data`
 - **Sync engine** (`src/lib/storage/sync-manager.ts`): Bidirectional sync with fingerprint-based conflict detection (rejects silent overwrite when both sides changed since last sync), 3s debounce, exponential backoff retry
-- **Server proxy** (`src/app/api/github/data/route.ts`): Reads GitHub token from HttpOnly cookies, proxies read/write to GitHub
+- **DB client** (`src/lib/server/turso.ts`): Server-side Turso client; `readNavData()` / `writeNavData()` (transactional full-snapshot write into normalized tables)
+- **Server proxy** (`src/app/api/data/route.ts`): Reads/writes Turso; no auth (private-site mode)
 
 ### Data Model
 
@@ -43,19 +44,18 @@ User action → localStorage (instant) → UI update → 3s debounce → /api/gi
 
 ### Key Directories
 
-- `src/app/` — App Router pages and API routes (`/api/auth/*`, `/api/github/data`, `/api/url/parse`, `/api/favicon`, `/api/runtime-config`)
+- `src/app/` — App Router pages and API routes (`/api/data`, `/api/url/parse`, `/api/favicon`, `/api/runtime-config`)
 - `src/components/ui/` — shadcn/ui primitives (Radix-based: button, dialog, input, alert-dialog, toast)
 - `src/components/layout/` — AppHeader, AppLayout, BottomNav, Container, PageContainer
 - `src/contexts/SitesContext.tsx` — Single context for all categories/sites CRUD, sync state, guest mode
-- `src/lib/storage/` — localStorage, GitHub storage, sync manager
-- `src/hooks/` — Custom hooks (`use-sync`, `use-service-worker`)
+- `src/lib/storage/` — localStorage, DB storage, sync manager
+- `src/lib/server/turso.ts` — Turso (libsql) database layer (server-only)
 - `src/lib/validation.ts` — Zod schemas + XSS sanitization for all user inputs
 - `src/lib/security.ts` — Rate limiting, origin validation, CSRF protection
 - `src/lib/runtime-policies.ts` — CSP header builder (called from middleware)
 - `src/lib/services/url-parser.ts` — URL metadata extraction (title, favicon, description)
 - `src/lib/utils/import-export.ts` — Import/export bookmarks logic
-- `src/data/sites.json` — Default seed data (used as fallback when user data not synced)
-- `data/sites.json` — Runtime user data (synced with GitHub, in .gitignore for local dev)
+- `src/data/sites.json` — Default seed data (fallback when DB not configured)
 
 ### Middleware & Security Headers
 
@@ -63,7 +63,7 @@ Middleware lives at `src/middleware.ts` (not root-level). It sets CSP, HSTS, X-F
 
 ### Auth Flow
 
-GitHub OAuth: `src/app/api/auth/github/` → GitHub → `src/app/api/auth/callback/github/` → sets HttpOnly cookie → `src/app/api/auth/session/` (verify) → `src/app/api/auth/logout/` (clear). Server-side routes read token from cookies; frontend never sees the raw token.
+Private-site mode (since 2026-08-21): no auth. `AuthContext` is always authenticated (`isAuthenticated=true`, `isGuestMode=false`, `authUser=null`). All GitHub OAuth routes, server-side GitHub client, and fork logic have been removed.
 
 ### Deployment
 
@@ -75,7 +75,7 @@ Build uses Next.js standalone output (`output: "standalone"` in `next.config.ts`
 - **Styling**: Tailwind CSS v4 with CSS-based config (no `tailwind.config.js`). CSS custom properties in `globals.css` define color palette, dark mode via `prefers-color-scheme`.
 - **Components**: shadcn/ui pattern with `cn()` utility (clsx + tailwind-merge). Lazy-loaded heavy components (`SortableSites`, `AddCategoryDialog`).
 - **Drag & drop**: `@dnd-kit` (core, sortable, utilities) for sortable categories and sites.
-- **Auth**: GitHub OAuth → HttpOnly cookies → server-side token extraction. Guest mode for unauthenticated users.
+- **Storage**: Turso (libsql) via `src/lib/server/turso.ts` — normalized tables, transactional writes. No auth (private site).
 - **Offline**: Service worker (`public/sw.js`) with cache-first strategy for GET requests.
 - **Validation**: Zod v4 schemas for URLs, titles, category names. XSS pattern detection in validation layer.
 
@@ -90,11 +90,10 @@ Build uses Next.js standalone output (`output: "standalone"` in `next.config.ts`
 ## Environment Variables
 
 Copy `.env.example` to `.env.local`:
-- `NEXT_PUBLIC_GITHUB_CLIENT_ID` (required) — also served at runtime via `/api/runtime-config` for Docker deployments
-- `GITHUB_CLIENT_SECRET` (required, server-only)
-- `NEXT_PUBLIC_GITHUB_OWNER`, `NEXT_PUBLIC_GITHUB_REPO`, `NEXT_PUBLIC_DATA_FILE_PATH` (optional overrides)
+- `TURSO_DATABASE_URL` (required, server-only) — Turso database URL (e.g. `libsql://xxx.turso.io`)
+- `TURSO_AUTH_TOKEN` (required, server-only) — Turso auth token (keep secret, never commit)
 
-`NEXT_PUBLIC_GITHUB_CLIENT_ID` is fetched client-side from `/api/runtime-config` (see `src/lib/runtime-public-config.ts`), so Docker images can be built once and configured at container startup.
+`NEXT_PUBLIC_GITHUB_OWNER` / `NEXT_PUBLIC_GITHUB_REPO` are optional and only used for the header GitHub link display.
 
 ## Related Files
 
