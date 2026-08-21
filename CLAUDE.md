@@ -76,7 +76,7 @@ Build uses Next.js standalone output (`output: "standalone"` in `next.config.ts`
 
 ## Environment Variables
 
-Copy `.env.example` to `.env.local`:
+Copy `.env.example` to `.env`:
 - `TURSO_DATABASE_URL` (required, server-only) — Turso database URL (e.g. `libsql://xxx.turso.io`)
 - `TURSO_AUTH_TOKEN` (required, server-only) — Turso auth token (keep secret, never commit)
 

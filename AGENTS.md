@@ -17,7 +17,7 @@ npm run test:coverage
 
 CI runs in order: `lint → type-check → test --run → build` (see `.github/workflows/docker.yml`).
 
-CI needs no env vars (build doesn't connect to Turso). Locally, copy `.env.example` → `.env.local` with real `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`.
+CI needs no env vars (build doesn't connect to Turso). Locally, copy `.env.example` → `.env` with real `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`.
 
 ## Conventions
 

@@ -29,7 +29,7 @@
 ### 2. 配置环境变量
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env
 ```
 
 | 变量 | 说明 |
@@ -50,7 +50,7 @@ node scripts/reset-tables.mjs
 node scripts/import-axutongxue.mjs [--source <path>] [--dry-run]
 ```
 
-环境变量从仓库根 `.env.local` 读取。
+环境变量从仓库根 `.env` 读取。
 
 ### 4. 运行
 

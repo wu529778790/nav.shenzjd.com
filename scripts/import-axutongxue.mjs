@@ -12,7 +12,7 @@
  * - 微信公众文章（mp.weixin.qq.com）→ 跳过（广告，2026-08-22 用户明确过滤）
  *
  * 用法: node scripts/import-axutongxue.mjs [--source <path>] [--dry-run]
- * 环境变量从仓库根 .env.local 读取。
+ * 环境变量从仓库根 .env 读取。
  */
 
 import { createClient } from "@libsql/client";
@@ -30,7 +30,7 @@ const SOURCE_PATH =
     : path.join(os.homedir(), "github", "navdata", "data", "axutongxue.json");
 
 // -------------------- 环境变量 --------------------
-const envPath = path.join(process.cwd(), ".env.local");
+const envPath = path.join(process.cwd(), ".env");
 if (fs.existsSync(envPath)) {
   for (const line of fs.readFileSync(envPath, "utf8").split("\n")) {
     const m = line.match(/^TURSO_(DATABASE_URL|AUTH_TOKEN)=(.+)$/);
@@ -40,7 +40,7 @@ if (fs.existsSync(envPath)) {
 const url = process.env.TURSO_DATABASE_URL;
 const authToken = process.env.TURSO_AUTH_TOKEN;
 if (!url || !authToken) {
-  console.error("缺少 TURSO_DATABASE_URL / TURSO_AUTH_TOKEN（.env.local）");
+  console.error("缺少 TURSO_DATABASE_URL / TURSO_AUTH_TOKEN（.env）");
   process.exit(1);
 }
 
