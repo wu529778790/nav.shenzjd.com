@@ -95,6 +95,8 @@ function isWeixinArticle(url) {
 
 function buildNode(node, parentId, depth) {
   const name = (node.name || "").trim();
+  // 广告分类整树剔除（2026-08-22 用户明确：特惠福利精选 全是广告）
+  if (skipNames.has(name) || name.includes("特惠福利精选")) return null;
   const category = {
     id: catId(node),
     parentId,
@@ -143,7 +145,8 @@ function buildNode(node, parentId, depth) {
   for (const child of node.children || []) {
     const childName = (child.name || "").trim();
     if (skipNames.has(childName)) continue;
-    category.children.push(buildNode(child, category.id, depth + 1));
+    const built = buildNode(child, category.id, depth + 1);
+    if (built) category.children.push(built);
   }
 
   return category;
@@ -153,7 +156,8 @@ const roots = [];
 for (const rc of rootCats) {
   const name = (rc.name || "").trim();
   if (skipNames.has(name)) continue;
-  roots.push(buildNode(rc, null, 0));
+  const built = buildNode(rc, null, 0);
+  if (built) roots.push(built);
 }
 
 // 统计
