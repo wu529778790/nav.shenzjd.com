@@ -1,30 +1,131 @@
 /**
- * 左侧分类导航 Sidebar（2026-08-21 重构）
+ * 左侧树形分类导航 Sidebar（2026-08-21 树状重构）
  *
- * 桌面端 sticky 固定在主区左侧，移动端通过顶栏切换按钮折叠显示。
- * 设计参考：luckman 补链营地 + 阿虚储物间—— 但做了切换式显示（一次只看一个分类），
- * 25 个分类 / 4378 条链接堆在同一长页会很乱，切换显示更清爽。
- *
- * Props:
- * - categories: 全部分类
- * - activeCategoryId: 当前选中的分类 id（由 HomeClient 持有）
- * - onCategoryChange: 切换分类回调
+ * 递归渲染任意深度的分类树（axutongxue 数据最深 5 层）。
+ * - 有 children 的节点：点击 chevron 展开/折叠，点击名称选中
+ * - 叶子节点：点击选中
+ * - 桌面端 sticky 左列，移动端抽屉
  */
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, FolderOpen, Folder } from "lucide-react";
 import type { Category } from "@/types";
 
 interface SidebarProps {
   categories: Category[];
   activeCategoryId: string | null;
   onCategoryChange: (categoryId: string) => void;
-  /** 移动端是否强制折叠（外部控制） */
   mobileOpen?: boolean;
   onMobileClose?: () => void;
+}
+
+/** 递归树节点 */
+function TreeNode({
+  node,
+  depth,
+  activeCategoryId,
+  expanded,
+  onToggle,
+  onSelect,
+  collapsed,
+}: {
+  node: Category;
+  depth: number;
+  activeCategoryId: string | null;
+  expanded: Set<string>;
+  onToggle: (id: string) => void;
+  onSelect: (id: string) => void;
+  collapsed: boolean;
+}) {
+  const hasChildren = (node.children?.length ?? 0) > 0;
+  const isActive = node.id === activeCategoryId;
+  const isExpanded = expanded.has(node.id);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => onSelect(node.id)}
+        className={cn(
+          "group flex w-full cursor-pointer items-center gap-1.5 rounded-[var(--radius-md)] px-2 py-1.5 text-left text-sm transition-colors",
+          isActive
+            ? "bg-[var(--primary-600)]/10 font-medium text-[var(--primary-700)]"
+            : "text-[var(--foreground-secondary)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]",
+          collapsed && "justify-center px-1.5",
+          depth > 0 && "pl-3.5"
+        )}
+        style={collapsed ? undefined : { paddingLeft: `${depth * 14 + 8}px` }}
+        title={node.name}
+      >
+        {/* 展开指示器 */}
+        {hasChildren ? (
+          <span
+            role="button"
+            tabIndex={-1}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(node.id);
+            }}
+            className={cn(
+              "flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-sm text-[var(--muted-foreground)] hover:bg-[var(--muted)]",
+              collapsed && "hidden"
+            )}
+            aria-label={isExpanded ? "折叠" : "展开"}
+          >
+            {isExpanded ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
+          </span>
+        ) : (
+          <span className="w-4 flex-shrink-0" />
+        )}
+
+        {/* 图标 */}
+        {!collapsed && (
+          <span className="flex-shrink-0 text-sm leading-none">
+            {node.icon || (hasChildren ? <Folder className="h-3.5 w-3.5 text-[var(--muted-foreground)]" /> : <FolderOpen className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />)}
+          </span>
+        )}
+
+        {!collapsed && (
+          <>
+            <span className="min-w-0 flex-1 truncate">{node.name}</span>
+            <span
+              className={cn(
+                "flex-shrink-0 text-[11px] tabular-nums",
+                isActive ? "text-[var(--primary-600)]" : "text-[var(--muted-foreground)]"
+              )}
+            >
+              {node.sites.length > 0 ? node.sites.length : ""}
+            </span>
+          </>
+        )}
+      </button>
+
+      {/* 子节点（展开时递归渲染） */}
+      {hasChildren && isExpanded && !collapsed && (
+        <div className="mt-0.5 space-y-0.5">
+          {node.children!.map((child) => (
+            <TreeNode
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              activeCategoryId={activeCategoryId}
+              expanded={expanded}
+              onToggle={onToggle}
+              onSelect={onSelect}
+              collapsed={collapsed}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function Sidebar({
@@ -34,12 +135,43 @@ export function Sidebar({
   mobileOpen,
   onMobileClose,
 }: SidebarProps) {
-  // 数据由 page.tsx 服务端过滤墓碑后传入，这里直接使用
-  const visible = categories;
-  const active = visible.find((c) => c.id === activeCategoryId) ?? visible[0];
-
   // 桌面端折叠态（窄屏隐藏为图标列）
   const [collapsed, setCollapsed] = useState(false);
+
+  // 展开状态：默认展开顶级一层 + 当前激活节点的祖先链
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    return new Set(categories.map((c) => c.id));
+  });
+
+  // 计算当前激活节点的祖先链，确保可见
+  const activeAncestors = useMemo(() => {
+    const chain = new Set<string>();
+    const find = (cats: Category[], target: string): boolean => {
+      for (const c of cats) {
+        if (c.id === target) {
+          chain.add(c.id);
+          return true;
+        }
+        if (c.children && find(c.children, target)) {
+          chain.add(c.id);
+          return true;
+        }
+      }
+      return false;
+    };
+    if (activeCategoryId) find(categories, activeCategoryId);
+    return chain;
+  }, [categories, activeCategoryId]);
+
+  // 激活节点变化时自动展开祖先链
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 展开祖先链是导航的语义化副作用（展开当前分类路径）
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const id of activeAncestors) next.add(id);
+      return next;
+    });
+  }, [activeAncestors]);
 
   // ESC 关闭移动端抽屉
   useEffect(() => {
@@ -51,59 +183,44 @@ export function Sidebar({
     return () => document.removeEventListener("keydown", onKey);
   }, [mobileOpen, onMobileClose]);
 
-  if (visible.length === 0) return null;
+  if (categories.length === 0) return null;
+
+  const toggle = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const nav = (
     <nav
       aria-label="分类导航"
       className="flex h-full min-h-0 flex-col gap-0.5 overflow-y-auto py-3"
     >
-      {visible.map((cat) => {
-        const isActive = cat.id === active?.id;
-        return (
-          <button
-            key={cat.id}
-            type="button"
-            onClick={() => onCategoryChange(cat.id)}
-            className={cn(
-              "group flex w-full cursor-pointer items-center gap-2 rounded-[var(--radius-md)] px-2.5 py-2 text-left text-sm transition-colors",
-              isActive
-                ? "bg-[var(--primary-600)]/10 font-medium text-[var(--primary-700)]"
-                : "text-[var(--foreground-secondary)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]",
-              collapsed && "justify-center px-2"
-            )}
-            title={cat.name}
-          >
-            <span className="flex-shrink-0 text-base leading-none">{cat.icon || "📁"}</span>
-            {!collapsed && (
-              <>
-                <span className="min-w-0 flex-1 truncate">{cat.name}</span>
-                <span
-                  className={cn(
-                    "flex-shrink-0 text-xs tabular-nums",
-                    isActive
-                      ? "text-[var(--primary-600)]"
-                      : "text-[var(--muted-foreground)]"
-                  )}
-                >
-                  {cat.sites.length}
-                </span>
-              </>
-            )}
-          </button>
-        );
-      })}
+      {categories.map((cat) => (
+        <TreeNode
+          key={cat.id}
+          node={cat}
+          depth={0}
+          activeCategoryId={activeCategoryId}
+          expanded={expanded}
+          onToggle={toggle}
+          onSelect={onCategoryChange}
+          collapsed={collapsed}
+        />
+      ))}
     </nav>
   );
 
-  // 桌面端：sticky 左列（窄屏可折叠为图标）
+  // 桌面端：sticky 左列
   return (
     <>
-      {/* 桌面端 */}
       <aside
         className={cn(
           "sticky top-16 hidden h-[calc(100vh-4rem)] flex-shrink-0 border-r border-[var(--border)] bg-[var(--background)] transition-all duration-200 md:block",
-          collapsed ? "w-14" : "w-64"
+          collapsed ? "w-12" : "w-64"
         )}
       >
         <div className="relative flex h-full flex-col">
@@ -132,11 +249,7 @@ export function Sidebar({
 
       {/* 移动端：抽屉式 */}
       {mobileOpen && (
-        <div
-          className="fixed inset-0 z-[60] md:hidden"
-          role="dialog"
-          aria-modal="true"
-        >
+        <div className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true">
           <div
             className="absolute inset-0 bg-black/40"
             onClick={onMobileClose}

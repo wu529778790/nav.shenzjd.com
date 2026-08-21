@@ -1,9 +1,8 @@
 /**
- * 首页客户端交互层（纯只读展示，2026-08-21 重构）
+ * 首页客户端交互层（树状导航版，2026-08-21）
  *
- * 数据由服务端 page.tsx 直读 Turso 注入 initialSites（SSR 秒开），
- * 本组件只做展示交互：左导航切换分类、全局搜索、子主题标签筛选、网格/列表切换。
- * 无编辑、无删除、无同步 —— 数据由 navdata 工具链维护。
+ * 数据由服务端 page.tsx 直读 Turso 注入 initialSites（树形结构，最深 5 层）。
+ * 交互：左侧树导航选中节点 → 右侧显示面包屑 + 子分类入口 + 站点网格；全局搜索跨树。
  */
 
 "use client";
@@ -12,12 +11,74 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Sidebar } from "@/components/HomePage/Sidebar";
-import { SubPathFilter } from "@/components/HomePage/SubPathFilter";
 import { StaticBoard } from "@/components/HomePage/StaticBoard";
 import { EmptyState } from "@/components/HomePage/EmptyState";
 import { HomeSkeleton } from "@/components/HomePage/HomeSkeleton";
-import { Menu, Search, X } from "lucide-react";
+import { Menu, Search, X, ChevronRight } from "lucide-react";
 import type { Category, Site } from "@/types";
+
+/* ============ 树工具函数 ============ */
+
+/** 在树中查找节点 */
+function findNode(categories: Category[], id: string | null): Category | null {
+  if (!id) return null;
+  for (const c of categories) {
+    if (c.id === id) return c;
+    if (c.children) {
+      const found = findNode(c.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/** 返回节点到根的路径（根 → 节点） */
+function findPath(
+  categories: Category[],
+  id: string | null
+): Category[] {
+  if (!id) return [];
+  for (const c of categories) {
+    if (c.id === id) return [c];
+    if (c.children) {
+      const sub = findPath(c.children, id);
+      if (sub.length > 0) return [c, ...sub];
+    }
+  }
+  return [];
+}
+
+/** 统计树中总站点数 */
+function countTotalSites(categories: Category[]): number {
+  let n = 0;
+  for (const c of categories) {
+    n += c.sites.length;
+    if (c.children) n += countTotalSites(c.children);
+  }
+  return n;
+}
+
+/** 树中所有站点平铺（用于全局搜索），带上所属分类路径 */
+function flattenTree(categories: Category[]): Array<{
+  site: Site;
+  category: Category;
+  path: Category[];
+}> {
+  const out: Array<{ site: Site; category: Category; path: Category[] }> = [];
+  const walk = (cats: Category[], path: Category[]) => {
+    for (const c of cats) {
+      const nextPath = [...path, c];
+      for (const s of c.sites) {
+        out.push({ site: s, category: c, path: nextPath });
+      }
+      if (c.children) walk(c.children, nextPath);
+    }
+  };
+  walk(categories, []);
+  return out;
+}
+
+/* ============ 主组件 ============ */
 
 export default function HomeClient({
   initialSites = [],
@@ -26,7 +87,7 @@ export default function HomeClient({
 }) {
   const categories = initialSites;
 
-  // 当前选中的分类（左导航切换）
+  // 当前选中节点 id（树中任意层）
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
     () => categories[0]?.id ?? null
   );
@@ -34,80 +95,51 @@ export default function HomeClient({
   // 全局搜索词
   const [searchQuery, setSearchQuery] = useState("");
 
-  // 当前分类内子主题标签筛选（多选 OR）
-  const [subPathSelected, setSubPathSelected] = useState<string[]>([]);
-
   // 视图模式
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   // 移动端侧栏开关
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  // 数据变化时若当前 id 失效，回退到第一个分类
+  // 数据变化时若当前 id 失效，回退到根第一个节点
   useEffect(() => {
-    if (!activeCategoryId || !categories.find((c) => c.id === activeCategoryId)) {
+    if (!activeCategoryId || !findNode(categories, activeCategoryId)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- 初始化回退
       setActiveCategoryId(categories[0]?.id ?? null);
     }
   }, [categories, activeCategoryId]);
 
-  // 切换分类时清除标签筛选
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 切换分类重置筛选
-    setSubPathSelected([]);
-  }, [activeCategoryId]);
+  const activeCategory = findNode(categories, activeCategoryId);
+  const activePath = useMemo(
+    () => findPath(categories, activeCategoryId),
+    [categories, activeCategoryId]
+  );
 
-  const activeCategory =
-    categories.find((c) => c.id === activeCategoryId) ?? categories[0];
-
-  // ============ 全局搜索结果（跨所有分类） ============
+  // ============ 全局搜索结果（跨整棵树） ============
   const globalSearchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return null;
-    const results: Array<{ category: Category; sites: Site[] }> = [];
-    for (const cat of categories) {
-      const matched = cat.sites.filter((s) => {
-        const haystack = `${s.title}\n${s.description ?? ""}\n${s.url}`.toLowerCase();
-        return haystack.includes(q);
-      });
-      if (matched.length > 0) results.push({ category: cat, sites: matched });
-    }
-    return results;
+    const flat = flattenTree(categories);
+    return flat.filter(({ site }) => {
+      const haystack = `${site.title}\n${site.description ?? ""}\n${site.url}`.toLowerCase();
+      return haystack.includes(q);
+    });
   }, [categories, searchQuery]);
 
-  // ============ 当前分类展示数据 ============
-  const currentCategorySites = useMemo(() => {
-    if (globalSearchResults) return [];
-    if (!activeCategory) return [];
-    if (subPathSelected.length === 0) return activeCategory.sites;
-    return activeCategory.sites.filter((s) => {
-      const tag = (s.description ?? "").split(" · ")[0]?.trim() ?? "";
-      return subPathSelected.includes(tag);
-    });
-  }, [activeCategory, subPathSelected, globalSearchResults]);
-
-  // 切换分类：清除搜索与筛选
+  // 切换分类：清除搜索
   const handleCategoryChange = useCallback((id: string) => {
     setActiveCategoryId(id);
     setSearchQuery("");
     setMobileSidebarOpen(false);
   }, []);
 
-  // 跳转分类（从搜索结果点击）
-  const handleJumpToCategory = useCallback((id: string) => {
-    setActiveCategoryId(id);
-    setSearchQuery("");
-  }, []);
-
   // ============ 快捷键 ============
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl/Cmd + K: 聚焦搜索框
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent("focus-global-search"));
       }
-      // Esc: 清除搜索
       if (e.key === "Escape") {
         setSearchQuery("");
       }
@@ -115,6 +147,8 @@ export default function HomeClient({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  const totalSites = useMemo(() => countTotalSites(categories), [categories]);
 
   // 首屏加载（无数据）时展示 skeleton
   if (categories.length === 0) {
@@ -127,13 +161,12 @@ export default function HomeClient({
     );
   }
 
-  const totalMatched =
-    globalSearchResults?.reduce((n, r) => n + r.sites.length, 0) ?? 0;
+  const totalMatched = globalSearchResults?.length ?? 0;
 
   return (
     <AppLayout>
       <div className="flex min-h-[calc(100vh-4rem)]">
-        {/* ========== 左侧导航 Sidebar ========== */}
+        {/* ========== 左侧树导航 ========== */}
         <Sidebar
           categories={categories}
           activeCategoryId={activeCategory?.id ?? null}
@@ -157,14 +190,13 @@ export default function HomeClient({
                 <Menu className="h-4 w-4" />
               </button>
 
-              {/* 当前分类标题 / 搜索状态 */}
+              {/* 面包屑 / 搜索状态 */}
               {globalSearchResults ? (
                 <div className="flex items-center gap-2 text-sm">
                   <Search className="h-4 w-4 text-[var(--primary-600)]" />
                   <span>
                     搜索「<strong>{searchQuery}</strong>」匹配
-                    <strong className="ml-1 tabular-nums">{totalMatched}</strong> 个结果，
-                    跨 <strong className="tabular-nums">{globalSearchResults.length}</strong> 个分类
+                    <strong className="ml-1 tabular-nums">{totalMatched}</strong> 个结果
                   </span>
                   <button
                     type="button"
@@ -176,15 +208,7 @@ export default function HomeClient({
                   </button>
                 </div>
               ) : (
-                activeCategory && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-base leading-none">{activeCategory.icon}</span>
-                    <span className="font-medium">{activeCategory.name}</span>
-                    <span className="text-xs tabular-nums text-[var(--muted-foreground)]">
-                      {activeCategory.sites.length}
-                    </span>
-                  </div>
-                )
+                <Breadcrumb path={activePath} onNavigate={handleCategoryChange} />
               )}
 
               {/* 全局搜索框 */}
@@ -192,6 +216,10 @@ export default function HomeClient({
 
               {/* 视图切换 */}
               <ViewToggle viewMode={viewMode} onChange={setViewMode} />
+
+              <span className="ml-auto text-xs tabular-nums text-[var(--muted-foreground)]">
+                {totalSites} 链接
+              </span>
             </div>
 
             {/* ========== 主内容区 ========== */}
@@ -199,27 +227,40 @@ export default function HomeClient({
               <GlobalSearchResults
                 results={globalSearchResults}
                 viewMode={viewMode}
-                onJumpToCategory={handleJumpToCategory}
+                onJumpToCategory={handleCategoryChange}
               />
             ) : activeCategory ? (
-              <div className="space-y-4">
-                {/* 子主题标签筛选 */}
-                <SubPathFilter
-                  sites={activeCategory.sites}
-                  selected={subPathSelected}
-                  onChange={setSubPathSelected}
-                />
-
-                {/* 卡片网格 */}
-                {currentCategorySites.length > 0 ? (
-                  <StaticBoard
-                    categories={[{ ...activeCategory, sites: currentCategorySites }]}
-                    viewMode={viewMode}
+              <div className="space-y-5">
+                {/* 子分类入口（如果有） */}
+                {activeCategory.children && activeCategory.children.length > 0 && (
+                  <SubCategoryGrid
+                    nodes={activeCategory.children}
+                    onNavigate={handleCategoryChange}
                   />
+                )}
+
+                {/* 当前节点站点 */}
+                {activeCategory.sites.length > 0 ? (
+                  <section>
+                    <h3 className="mb-3 flex items-center gap-2 px-1 text-sm font-medium text-[var(--foreground-secondary)]">
+                      <span>{activeCategory.icon || "📁"}</span>
+                      <span className="truncate">{activeCategory.name}</span>
+                      <span className="tabular-nums text-xs text-[var(--muted-foreground)]">
+                        {activeCategory.sites.length}
+                      </span>
+                    </h3>
+                    <StaticBoard
+                      categories={[{ ...activeCategory }]}
+                      viewMode={viewMode}
+                    />
+                  </section>
                 ) : (
-                  <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] p-8 text-center text-sm text-[var(--muted-foreground)]">
-                    当前筛选下没有匹配的链接
-                  </div>
+                  activeCategory.children &&
+                  activeCategory.children.length === 0 && (
+                    <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] p-8 text-center text-sm text-[var(--muted-foreground)]">
+                      此分类暂无链接
+                    </div>
+                  )
                 )}
               </div>
             ) : (
@@ -235,9 +276,95 @@ export default function HomeClient({
   );
 }
 
-/**
- * 顶部全局搜索框（受控）
- */
+/* ============ 面包屑 ============ */
+
+function Breadcrumb({
+  path,
+  onNavigate,
+}: {
+  path: Category[];
+  onNavigate: (id: string) => void;
+}) {
+  if (path.length === 0) return null;
+  return (
+    <nav aria-label="面包屑" className="flex min-w-0 items-center gap-1 text-sm">
+      {path.map((c, i) => {
+        const isLast = i === path.length - 1;
+        return (
+          <span key={c.id} className="flex min-w-0 items-center gap-1">
+            {i > 0 && <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--muted-foreground)]" />}
+            {isLast ? (
+              <span className="flex min-w-0 items-center gap-1.5 font-medium">
+                <span className="text-base leading-none flex-shrink-0">{c.icon || "📁"}</span>
+                <span className="truncate">{c.name}</span>
+                {c.sites.length > 0 && (
+                  <span className="tabular-nums text-xs text-[var(--muted-foreground)]">
+                    {c.sites.length}
+                  </span>
+                )}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onNavigate(c.id)}
+                className="cursor-pointer truncate text-[var(--foreground-secondary)] transition-colors hover:text-[var(--primary-700)]"
+              >
+                {c.name}
+              </button>
+            )}
+          </span>
+        );
+      })}
+    </nav>
+  );
+}
+
+/* ============ 子分类入口网格 ============ */
+
+function SubCategoryGrid({
+  nodes,
+  onNavigate,
+}: {
+  nodes: Category[];
+  onNavigate: (id: string) => void;
+}) {
+  return (
+    <section>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+        {nodes.map((child) => {
+          const childCount = child.sites.length + countTotalSites(child.children ?? []);
+          return (
+            <button
+              key={child.id}
+              type="button"
+              onClick={() => onNavigate(child.id)}
+              className="group flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-3 text-left transition-all hover:border-[var(--primary-400)] hover:shadow-[var(--shadow-sm)]"
+            >
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--primary-600)]/10 text-base">
+                {child.icon || "📁"}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-[var(--foreground)]">
+                  {child.name}
+                </span>
+                <span className="block text-xs text-[var(--muted-foreground)]">
+                  {childCount} 链接
+                  {child.children && child.children.length > 0
+                    ? ` · ${child.children.length} 子分类`
+                    : ""}
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 flex-shrink-0 text-[var(--muted-foreground)] transition-transform group-hover:translate-x-0.5" />
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* ============ 全局搜索框 ============ */
+
 function GlobalSearchBox({
   value,
   onChange,
@@ -246,22 +373,21 @@ function GlobalSearchBox({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="relative ml-2 flex-1 max-w-md">
+    <div className="relative ml-2 max-w-md flex-1">
       <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
       <input
         type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="搜索 4000+ 链接（标题/描述/URL）... ⌘K"
+        placeholder="搜索链接（标题/描述/URL）... ⌘K"
         className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-secondary)] py-1.5 pl-8 pr-3 text-sm outline-none transition-colors focus:border-[var(--primary-400)] focus:bg-[var(--background-elevated)]"
       />
     </div>
   );
 }
 
-/**
- * 视图切换（网格/列表）
- */
+/* ============ 视图切换 ============ */
+
 function ViewToggle({
   viewMode,
   onChange,
@@ -299,37 +425,75 @@ function ViewToggle({
   );
 }
 
-/**
- * 全局搜索结果（按分类分组，可点击跳转）
- */
+/* ============ 全局搜索结果（按分类路径分组） ============ */
+
 function GlobalSearchResults({
   results,
   viewMode,
   onJumpToCategory,
 }: {
-  results: Array<{ category: Category; sites: Site[] }>;
+  results: Array<{ site: Site; category: Category; path: Category[] }>;
   viewMode: "grid" | "list";
   onJumpToCategory: (id: string) => void;
 }) {
+  // 按顶级分类分组
+  const grouped = useMemo(() => {
+    const map = new Map<string, Array<{ site: Site; category: Category; path: Category[] }>>();
+    for (const r of results) {
+      const rootId = r.path[0]?.id ?? "未分类";
+      if (!map.has(rootId)) map.set(rootId, []);
+      map.get(rootId)!.push(r);
+    }
+    return [...map.entries()];
+  }, [results]);
+
   return (
     <div className="space-y-6">
-      {results.map(({ category, sites }) => (
-        <section key={category.id} className="space-y-3">
-          <button
-            type="button"
-            onClick={() => onJumpToCategory(category.id)}
-            className="flex items-center gap-2 text-sm hover:opacity-80"
-          >
-            <span className="text-base leading-none">{category.icon || "📁"}</span>
-            <span className="font-medium">{category.name}</span>
-            <span className="text-xs tabular-nums text-[var(--muted-foreground)]">
-              {sites.length}
-            </span>
-            <span className="text-xs text-[var(--primary-600)]">查看该分类 →</span>
-          </button>
-          <StaticBoard categories={[{ ...category, sites }]} viewMode={viewMode} />
-        </section>
-      ))}
+      {grouped.map(([rootId, items]) => {
+        const root = items[0].path[0];
+        return (
+          <section key={rootId} className="space-y-3">
+            <button
+              type="button"
+              onClick={() => onJumpToCategory(root.id)}
+              className="flex items-center gap-2 text-sm hover:opacity-80"
+            >
+              <span className="text-base leading-none">{root.icon || "📁"}</span>
+              <span className="font-medium">{root.name}</span>
+              <span className="text-xs tabular-nums text-[var(--muted-foreground)]">
+                {items.length}
+              </span>
+              <span className="text-xs text-[var(--primary-600)]">查看该分类 →</span>
+            </button>
+            <div className="space-y-1">
+              {items.map(({ site, path }) => {
+                const subPath = path.slice(1).map((p) => p.name).join(" / ");
+                return (
+                  <a
+                    key={site.id}
+                    href={site.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-[var(--radius-md)] px-2 py-1.5 transition-colors hover:bg-[var(--muted)]"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm">{site.title}</span>
+                      {subPath && (
+                        <span className="block truncate text-xs text-[var(--muted-foreground)]">
+                          {subPath}
+                        </span>
+                      )}
+                    </span>
+                    {viewMode === "grid" ? (
+                      <span className="text-[10px] text-[var(--muted-foreground)]">↗</span>
+                    ) : null}
+                  </a>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

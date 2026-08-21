@@ -1,15 +1,13 @@
 /**
  * Turso (libsql) 存储层（服务端）
  *
- * 规范化多表存储：
- * - categories：分类表
- * - sites：站点表（外键 category_id）
+ * 规范化多表存储（树形结构，2026-08-21 扩展）：
+ * - categories：分类表（parent_id 自引用 → 支持任意深度树）
+ * - sites：站点表（外键 category_id，挂在叶子/任意节点）
  * - nav_meta：版本元数据（version / lastModified / _version）
  *
- * 写入策略：事务内全量快照（DELETE + INSERT）。
- * 与前端「整份 NavData push」模型天然一致（merge 已在客户端完成），
- * 事务保证原子性；个人数据量（几百条）下毫秒级完成。
- * 墓碑行（_deleted）一并落库，删除仍可跨设备传播，渲染时由前端过滤。
+ * 数据由 navdata 工具链（爬虫 + 导入脚本）维护，前端纯只读。
+ * 写入策略：事务内全量快照（DELETE + INSERT），与导入脚本语义一致。
  */
 
 import { createClient, type Client } from "@libsql/client";
@@ -31,6 +29,7 @@ function getClient(): Client {
 const CREATE_TABLES: string[] = [
   `CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
+    parent_id TEXT,
     name TEXT NOT NULL,
     icon TEXT,
     sort INTEGER NOT NULL DEFAULT 0,
@@ -56,6 +55,7 @@ const CREATE_TABLES: string[] = [
     value TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_sites_category ON sites(category_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id)`,
 ];
 
 let tablesReady: Promise<void> | null = null;
@@ -85,10 +85,11 @@ function nullable(value: string | undefined | null): string | null {
 /** 单条 Category 的 INSERT 语句参数 */
 function categoryInsert(cat: Category): { sql: string; args: (string | number | null)[] } {
   return {
-    sql: `INSERT INTO categories (id, name, icon, sort, _deleted, deleted_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO categories (id, parent_id, name, icon, sort, _deleted, deleted_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       cat.id,
+      nullable(cat.parentId),
       cat.name,
       nullable(cat.icon),
       cat.sort ?? 0,
@@ -130,9 +131,25 @@ function metaUpsert(key: string, value: string | number): { sql: string; args: (
   };
 }
 
+/** 递归展平 Category 树 → 扁平数组（含 parentId） */
+function flattenCategories(categories: Category[]): Category[] {
+  const out: Category[] = [];
+  const walk = (cats: Category[], parentId: string | undefined) => {
+    for (const c of cats) {
+      const { children, ...rest } = c;
+      out.push({ ...rest, parentId });
+      if (children && children.length > 0) {
+        walk(children, c.id);
+      }
+    }
+  };
+  walk(categories, undefined);
+  return out;
+}
+
 /**
- * 读取整份导航数据。
- * 空库（无任何分类且无 meta）返回 null，语义与旧 GitHub 存储一致。
+ * 读取整份导航数据（树形）。
+ * 空库（无任何分类且无 meta）返回 null。
  */
 export async function readNavData(): Promise<NavData | null> {
   await ensureTables();
@@ -151,6 +168,8 @@ export async function readNavData(): Promise<NavData | null> {
 
   const categories: Category[] = catsRs.rows.map((r) => ({
     id: String(r.id),
+    parentId:
+      r.parent_id != null && r.parent_id !== "" ? String(r.parent_id) : undefined,
     name: String(r.name),
     icon: r.icon != null ? String(r.icon) : undefined,
     sort: Number(r.sort ?? 0),
@@ -185,17 +204,40 @@ export async function readNavData(): Promise<NavData | null> {
     return null;
   }
 
+  // 按 parentId 组装树
+  const byId = new Map<string, Category>();
+  for (const c of categories) {
+    byId.set(c.id, c);
+  }
+  const roots: Category[] = [];
+  for (const c of categories) {
+    if (c.parentId && byId.has(c.parentId)) {
+      const parent = byId.get(c.parentId)!;
+      (parent.children ??= []).push(c);
+    } else {
+      roots.push(c);
+    }
+  }
+  // 每层的 children 按 sort 排序
+  const sortChildren = (cats: Category[]) => {
+    cats.sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name, "zh-CN"));
+    for (const c of cats) {
+      if (c.children) sortChildren(c.children);
+    }
+  };
+  sortChildren(roots);
+
   return {
     version: meta.version ?? "1.0",
     lastModified: meta.lastModified ? Number(meta.lastModified) : 0,
     _version: meta._version ? Number(meta._version) : undefined,
-    categories,
+    categories: roots,
   };
 }
 
 /**
  * 整份写入（事务内全量快照）。
- * 事务保证：要么全部替换成功，要么保持原状。
+ * 接受树形 NavData，内部递归展平为带 parent_id 的行。
  */
 export async function writeNavData(data: NavData): Promise<void> {
   await ensureTables();
@@ -206,7 +248,8 @@ export async function writeNavData(data: NavData): Promise<void> {
     "DELETE FROM categories",
   ];
 
-  for (const cat of data.categories) {
+  const flat = flattenCategories(data.categories);
+  for (const cat of flat) {
     statements.push(categoryInsert(cat));
     for (const site of cat.sites) {
       statements.push(siteInsert(cat.id, site));

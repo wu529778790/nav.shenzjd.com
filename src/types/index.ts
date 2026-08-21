@@ -19,14 +19,18 @@ export interface Site {
   deletedAt?: string;
 }
 
-/** 分类 */
+/** 分类（树形节点） */
 export interface Category {
   id: string;
   name: string;
   icon?: string;
   sort: number;
   sites: Site[];
-  /** 最后修改时间（ISO 字符串），用于 merge 时 last-writer-wins */
+  /** 父分类 id（顶级节点无此字段） */
+  parentId?: string;
+  /** 子分类（递归树） */
+  children?: Category[];
+  /** 最后修改时间（ISO 字符串） */
   updatedAt?: string;
   /** 墓碑标记：分类级删除同样需要跨设备传播 */
   _deleted?: boolean;
