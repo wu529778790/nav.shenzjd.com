@@ -1,12 +1,9 @@
 /**
- * 应用布局组件
+ * 应用布局组件（2026-08-21 树形导航站重构）
+ * 页面无页脚，Header 由 HomeClient 持有搜索状态渲染。
  */
 
-"use client";
-
 import { ReactNode } from "react";
-import { AppHeader } from "./AppHeader";
-import { Footer } from "./Footer";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -14,14 +11,8 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   return (
-    <div className="relative min-h-screen overflow-x-clip">
-      {/* 扁平·内容优先:背景交由 body 的极淡纸感渐变,此处不再叠加重彩色光斑 */}
-
-      <AppHeader />
-
-      <main className="flex flex-1 flex-col">{children}</main>
-
-      <Footer />
+    <div className="relative flex min-h-screen flex-col overflow-x-clip">
+      {children}
     </div>
   );
 }
