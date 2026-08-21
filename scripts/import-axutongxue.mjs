@@ -9,6 +9,7 @@
  * - expandable item（url 为空 + links 数组）→ 展开为多个 site
  * - note 类型（url 为 null）→ 跳过（是说明文字非链接）
  * - 「分隔线」占位节点 → 跳过
+ * - 微信公众文章（mp.weixin.qq.com）→ 跳过（广告，2026-08-22 用户明确过滤）
  *
  * 用法: node scripts/import-axutongxue.mjs [--source <path>] [--dry-run]
  * 环境变量从仓库根 .env.local 读取。
@@ -87,6 +88,11 @@ function extractEmoji(s) {
 // 返回 { categories: Category[], sites: Site[] }，categories 带 parentId + children
 const skipNames = new Set(["分隔线"]);
 
+/** 微信公众文章 URL（广告，过滤） */
+function isWeixinArticle(url) {
+  return typeof url === "string" && /mp\.weixin\.qq\.com/i.test(url);
+}
+
 function buildNode(node, parentId, depth) {
   const name = (node.name || "").trim();
   const category = {
@@ -104,11 +110,14 @@ function buildNode(node, parentId, depth) {
     const type = item.type || "normal";
     // note / 无 url 且非 expandable → 跳过
     if (!item.url && type !== "expandable") continue;
+    // 微信公众文章 → 跳过（广告）
+    if (isWeixinArticle(item.url)) continue;
 
     if (type === "expandable" && Array.isArray(item.links) && item.links.length > 0) {
       // 展开为多个 site，title 用「父标题 · 子标题」避免丢失上下文
       for (const link of item.links) {
         if (!link.url) continue;
+        if (isWeixinArticle(link.url)) continue;
         category.sites.push({
           id: siteId(category.id, link),
           title: `${item.title} · ${link.title}`.slice(0, 80),
