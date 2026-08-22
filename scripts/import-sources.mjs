@@ -197,7 +197,6 @@ function buildNode(node, parentId, depth, stats) {
 const roots = [];
 const perSource = [];
 let topSort = 0;
-
 for (const file of SOURCES) {
   const srcPath = path.join(DATA_DIR, file);
   if (!fs.existsSync(srcPath)) {
@@ -225,6 +224,22 @@ for (const file of SOURCES) {
       `过滤 ${stats.filtered} / 去重跳过 ${stats.dupSkipped}`
   );
 }
+
+// 修剪空分类：无站点且无子分类的节点整枝删除（子分类删空后父分类同步清理），
+// 2026-08-22 用户明确：分类下面没有链接就直接删掉
+function pruneEmpty(cats) {
+  const out = [];
+  for (const c of cats) {
+    if (c.children?.length) c.children = pruneEmpty(c.children);
+    if (c.sites.length > 0 || (c.children?.length ?? 0) > 0) out.push(c);
+  }
+  return out;
+}
+
+const prunedRoots = pruneEmpty(roots);
+const prunedCount = roots.length - prunedRoots.length;
+roots.length = 0;
+roots.push(...prunedRoots);
 
 // 统计
 let totalCats = 0;
