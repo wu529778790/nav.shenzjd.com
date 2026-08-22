@@ -13,17 +13,23 @@ import Link from "next/link";
 interface AppHeaderProps {
   searchValue: string;
   onSearchChange: (value: string) => void;
+  /** 点击 logo 跳转到第一个顶级分类（由 HomeClient 处理） */
+  onLogoClick?: () => void;
 }
 
-export function AppHeader({ searchValue, onSearchChange }: AppHeaderProps) {
+export function AppHeader({ searchValue, onSearchChange, onLogoClick }: AppHeaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
     <header className="sticky top-0 z-[45] h-16 w-full border-b border-[var(--border)] bg-[var(--background-secondary)]">
       <div className="mx-auto flex h-full max-w-[1440px] items-center justify-between gap-4 px-4 md:px-6">
-        {/* Logo */}
+        {/* Logo：点击跳转到第一个顶级分类（2026-08-22 用户拍板） */}
         <Link
           href="/"
+          onClick={(e) => {
+            e.preventDefault();
+            onLogoClick?.();
+          }}
           className="flex flex-shrink-0 items-center gap-2.5"
           aria-label="神族九帝的收藏夹首页"
         >

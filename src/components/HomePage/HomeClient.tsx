@@ -291,6 +291,14 @@ export default function HomeClient({
     if (isMobile) setMobileView("content");
   };
 
+  // 点击 logo：跳转到第一个顶级分类（2026-08-22 用户拍板）
+  const handleLogoClick = () => {
+    setActiveCategoryId(categories[0]?.id ?? null);
+    setSearchQuery("");
+    setMobileSidebarOpen(false);
+    if (isMobile) setMobileView("content");
+  };
+
   // ============ 快捷键 ============
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -311,7 +319,11 @@ export default function HomeClient({
 
   return (
     <AppLayout>
-      <AppHeader searchValue={searchQuery} onSearchChange={setSearchQuery} />
+      <AppHeader
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        onLogoClick={handleLogoClick}
+      />
 
       <div className="mx-auto flex w-full max-w-[1440px] flex-1 items-stretch">
         {/* ========== 左侧树导航 ========== */}
