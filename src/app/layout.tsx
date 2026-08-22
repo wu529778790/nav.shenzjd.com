@@ -61,6 +61,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" className={plusJakarta.variable}>
+      {/* 防闪烁：hydration 前应用主题（localStorage 优先，缺省跟随系统） */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `(function(){try{var t=localStorage.getItem("theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}document.documentElement.dataset.theme=t;}catch(e){document.documentElement.dataset.theme="light";}})();`,
+        }}
+      />
       <body className="antialiased">
         <ErrorBoundary>{children}</ErrorBoundary>
       </body>
