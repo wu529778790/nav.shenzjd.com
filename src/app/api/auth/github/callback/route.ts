@@ -11,7 +11,13 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { timingSafeEqual } from "node:crypto";
-import { createSessionToken, adminLogin, SESSION_COOKIE } from "@/lib/server/auth";
+import {
+  createSessionToken,
+  adminLogin,
+  SESSION_COOKIE,
+  githubClientId,
+  githubClientSecret,
+} from "@/lib/server/auth";
 
 export const runtime = "nodejs";
 
@@ -54,8 +60,8 @@ export async function GET(request: Request) {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({
-        client_id: process.env.GITHUB_CLIENT_ID,
-        client_secret: process.env.GITHUB_CLIENT_SECRET,
+        client_id: githubClientId(),
+        client_secret: githubClientSecret(),
         code,
       }),
     });
