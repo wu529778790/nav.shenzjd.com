@@ -237,6 +237,18 @@ export default function HomeClient({
   // 移动端侧栏开关
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
+  // 移动端：默认直接展示 tree 视图（不显示主区），点节点才切到 content 视图（带返回按钮回到 tree）
+  // 2026-08-22 用户拍板
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileView, setMobileView] = useState<"tree" | "content">("tree");
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
   // 搜索输入引用（⌘K 聚焦）
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -271,11 +283,12 @@ export default function HomeClient({
     });
   })();
 
-  // 切换分类：清除搜索
+  // 切换分类：清除搜索；移动端切到 content 视图
   const handleCategoryChange = (id: string) => {
     setActiveCategoryId(id);
     setSearchQuery("");
     setMobileSidebarOpen(false);
+    if (isMobile) setMobileView("content");
   };
 
   // ============ 快捷键 ============
@@ -307,129 +320,136 @@ export default function HomeClient({
           activeCategoryId={activeCategory?.id ?? null}
           onCategoryChange={handleCategoryChange}
           mobileOpen={mobileSidebarOpen}
+          mobileAlwaysOpen={isMobile && mobileView === "tree"}
           onMobileClose={() => setMobileSidebarOpen(false)}
         />
 
-        {/* ========== 右侧主区 ========== */}
-        <main className="min-w-0 flex-1">
-          <div className="mx-auto max-w-[1100px] px-4 py-6 md:px-8">
-            {/* 顶部操作栏（sticky）：移动端侧栏按钮 + 面包屑 / 搜索状态 */}
-            <div className="sticky top-16 z-[40] -mx-4 mb-6 flex flex-wrap items-center gap-3 border-b border-[var(--border)] bg-[var(--background)]/95 px-4 py-3 backdrop-blur md:-mx-8 md:px-8">
-              <button
-                type="button"
-                onClick={() => setMobileSidebarOpen(true)}
-                className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-secondary)] p-1.5 text-[var(--foreground-secondary)] md:hidden"
-                aria-label="打开分类导航"
-              >
-                <Menu className="h-4 w-4" />
-              </button>
-
-              {globalSearchResults ? (
-                <div className="flex items-center gap-2 text-sm">
-                  <span>
-                    搜索「<strong>{searchQuery}</strong>」匹配
-                    <strong className="ml-1 tabular-nums">{globalSearchResults.length}</strong>{" "}
-                    个结果
-                  </span>
+        {/* ========== 右侧主区（移动端 tree 视图时不渲染，节省首屏） ========== */}
+        {!(isMobile && mobileView === "tree") && (
+          <main className="min-w-0 flex-1">
+            <div className="mx-auto max-w-[1100px] px-4 py-6 md:px-8">
+              {/* 顶部操作栏（sticky）：移动端返回 tree 按钮 + 面包屑 / 搜索状态 */}
+              <div className="sticky top-16 z-[40] -mx-4 mb-6 flex flex-wrap items-center gap-3 border-b border-[var(--border)] bg-[var(--background)]/95 px-4 py-3 backdrop-blur md:-mx-8 md:px-8">
+                {isMobile && (
                   <button
                     type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="ml-1 cursor-pointer rounded-full p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-                    aria-label="清除搜索"
+                    onClick={() => setMobileView("tree")}
+                    className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-secondary)] p-1.5 text-[var(--foreground-secondary)]"
+                    aria-label="返回分类导航"
                   >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        d="M6 6L18 18M18 6L6 18"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                    </svg>
+                    <Menu className="h-4 w-4" />
                   </button>
-                </div>
-              ) : (
-                <Breadcrumb
-                  path={activePath}
-                  topIndexMap={topIndexMap}
-                  onNavigate={handleCategoryChange}
-                />
-              )}
-
-              <span className="ml-auto text-xs tabular-nums text-[var(--muted-foreground)]">
-                {totalSites} 个网站
-              </span>
-            </div>
-
-            {/* ========== 主内容区 ========== */}
-            {globalSearchResults ? (
-              <GlobalSearchResults
-                results={globalSearchResults}
-                topIndexMap={topIndexMap}
-                onJumpToCategory={handleCategoryChange}
-              />
-            ) : activeCategory ? (
-              <div className="space-y-8">
-                {/* 标题行 + meta */}
-                <div className="space-y-1.5">
-                  <h1 className="text-[32px] font-bold leading-tight tracking-tight text-[var(--foreground)]">
-                    {activeCategory.parentId == null
-                      ? formatTopCategoryName(
-                          activeCategory.name,
-                          topIndexMap.get(activeCategory.id) ?? 0
-                        )
-                      : activeCategory.name}
-                  </h1>
-                  <p className="text-sm text-[var(--muted-foreground)]">
-                    {activeCategory.children?.length
-                      ? `${activeCategory.children.length} 个子分类 · `
-                      : ""}
-                    {countDescendantSites(activeCategory)} 个网站
-                  </p>
-                </div>
-
-                {/* 子分类 Bento 网格（如果有） */}
-                {activeCategory.children && activeCategory.children.length > 0 && (
-                  <section>
-                    <h2 className="mb-3 text-[13px] font-semibold text-[var(--foreground)]">
-                      子分类
-                    </h2>
-                    <BentoSubCategoryGrid
-                      nodes={activeCategory.children}
-                      onNavigate={handleCategoryChange}
-                    />
-                  </section>
                 )}
 
-                {/* 当前节点站点网格 */}
-                {activeCategory.sites.length > 0 ? (
-                  <section>
-                    <h2 className="mb-3 text-[13px] font-semibold text-[var(--foreground)]">
-                      全部网站
-                    </h2>
-                    <StaticBoard
-                      sites={activeCategory.sites}
-                      reportCounts={initialReportCounts}
-                      reportedSiteIds={initialReportedSiteIds}
-                    />
-                  </section>
+                {globalSearchResults ? (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span>
+                      搜索「<strong>{searchQuery}</strong>」匹配
+                      <strong className="ml-1 tabular-nums">
+                        {globalSearchResults.length}
+                      </strong>{" "}
+                      个结果
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="ml-1 cursor-pointer rounded-full p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                      aria-label="清除搜索"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M6 6L18 18M18 6L6 18"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
                 ) : (
-                  activeCategory.children &&
-                  activeCategory.children.length === 0 && (
-                    <div className="empty-state">
-                      <div className="text-lg font-semibold">此分类暂无网站</div>
-                    </div>
-                  )
+                  <Breadcrumb
+                    path={activePath}
+                    topIndexMap={topIndexMap}
+                    onNavigate={handleCategoryChange}
+                  />
                 )}
+
+                <span className="ml-auto text-xs tabular-nums text-[var(--muted-foreground)]">
+                  {totalSites} 个网站
+                </span>
               </div>
-            ) : null}
-          </div>
-        </main>
+
+              {/* ========== 主内容区 ========== */}
+              {globalSearchResults ? (
+                <GlobalSearchResults
+                  results={globalSearchResults}
+                  topIndexMap={topIndexMap}
+                  onJumpToCategory={handleCategoryChange}
+                />
+              ) : activeCategory ? (
+                <div className="space-y-8">
+                  {/* 标题行 + meta */}
+                  <div className="space-y-1.5">
+                    <h1 className="text-[32px] font-bold leading-tight tracking-tight text-[var(--foreground)]">
+                      {activeCategory.parentId == null
+                        ? formatTopCategoryName(
+                            activeCategory.name,
+                            topIndexMap.get(activeCategory.id) ?? 0
+                          )
+                        : activeCategory.name}
+                    </h1>
+                    <p className="text-sm text-[var(--muted-foreground)]">
+                      {activeCategory.children?.length
+                        ? `${activeCategory.children.length} 个子分类 · `
+                        : ""}
+                      {countDescendantSites(activeCategory)} 个网站
+                    </p>
+                  </div>
+
+                  {/* 子分类 Bento 网格（如果有） */}
+                  {activeCategory.children && activeCategory.children.length > 0 && (
+                    <section>
+                      <h2 className="mb-3 text-[13px] font-semibold text-[var(--foreground)]">
+                        子分类
+                      </h2>
+                      <BentoSubCategoryGrid
+                        nodes={activeCategory.children}
+                        onNavigate={handleCategoryChange}
+                      />
+                    </section>
+                  )}
+
+                  {/* 当前节点站点网格 */}
+                  {activeCategory.sites.length > 0 ? (
+                    <section>
+                      <h2 className="mb-3 text-[13px] font-semibold text-[var(--foreground)]">
+                        全部网站
+                      </h2>
+                      <StaticBoard
+                        sites={activeCategory.sites}
+                        reportCounts={initialReportCounts}
+                        reportedSiteIds={initialReportedSiteIds}
+                      />
+                    </section>
+                  ) : (
+                    activeCategory.children &&
+                    activeCategory.children.length === 0 && (
+                      <div className="empty-state">
+                        <div className="text-lg font-semibold">此分类暂无网站</div>
+                      </div>
+                    )
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </main>
+        )}
       </div>
     </AppLayout>
   );

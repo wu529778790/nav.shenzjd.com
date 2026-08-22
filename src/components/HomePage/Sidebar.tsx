@@ -75,6 +75,8 @@ interface SidebarProps {
   onCategoryChange: (categoryId: string) => void;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
+  /** 移动端全屏展示模式（不通过抽屉触发，占满首屏直接显示 tree），2026-08-22 用户拍板 */
+  mobileAlwaysOpen?: boolean;
 }
 
 /** 计算节点下挂的站点总数（含子孙） */
@@ -250,6 +252,7 @@ export function Sidebar({
   onCategoryChange,
   mobileOpen,
   onMobileClose,
+  mobileAlwaysOpen,
 }: SidebarProps) {
   // 展开状态：默认全部收起（仅显示顶级分类名称，点击再展开）
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -349,8 +352,15 @@ export function Sidebar({
         </div>
       </aside>
 
+      {/* 移动端：全屏 tree 模式（mobileAlwaysOpen，首屏直接展示不需打开抽屉，2026-08-22 用户拍板） */}
+      {mobileAlwaysOpen && (
+        <aside className="fixed inset-x-0 top-16 bottom-0 z-40 md:hidden border-t border-[var(--border)] bg-[var(--background-secondary)]">
+          <div className="h-full overflow-hidden px-2 py-2">{renderNav(false)}</div>
+        </aside>
+      )}
+
       {/* 移动端：抽屉式 —— 展示站点链接（无右侧主区，链接需从树里直达） */}
-      {mobileOpen && (
+      {!mobileAlwaysOpen && mobileOpen && (
         <div className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true">
           <div
             className="absolute inset-0 bg-black/40"
