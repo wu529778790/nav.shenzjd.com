@@ -73,6 +73,8 @@ interface SidebarProps {
   categories: Category[];
   activeCategoryId: string | null;
   onCategoryChange: (categoryId: string) => void;
+  /** 移动端：tree 全屏且叶子分类展开时内联显示站点链接（无右侧主区）2026-08-22 用户拍板 */
+  showLeafSites?: boolean;
 }
 
 /** 计算节点下挂的站点总数（含子孙） */
@@ -242,7 +244,12 @@ function SiteRow({
 
 /* ============ 主组件 ============ */
 
-export function Sidebar({ categories, activeCategoryId, onCategoryChange }: SidebarProps) {
+export function Sidebar({
+  categories,
+  activeCategoryId,
+  onCategoryChange,
+  showLeafSites = false,
+}: SidebarProps) {
   // 展开状态：默认全部收起（仅显示顶级分类名称，点击再展开）
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
@@ -318,8 +325,8 @@ export function Sidebar({ categories, activeCategoryId, onCategoryChange }: Side
 
   return (
     <>
-      {/* 左列：tree 永远可见 —— 桌面 w-96（384px）/ 移动 w-[40%] 最大 180px（2026-08-22 用户拍板） */}
-      <aside className="sticky top-16 z-30 h-[calc(100vh-4rem)] w-[40%] max-w-[180px] flex-shrink-0 overflow-y-auto border-r border-[var(--border)] bg-[var(--background-secondary)] md:max-w-none md:w-96">
+      {/* 左列：桌面 w-96 与右侧主区并排 / 移动端 w-full 全屏 tree（无右侧区，叶子内联站点）2026-08-22 用户拍板 */}
+      <aside className="sticky top-16 z-30 h-[calc(100vh-4rem)] w-full flex-shrink-0 overflow-y-auto border-r border-[var(--border)] bg-[var(--background-secondary)] md:w-96">
         <div className="relative flex h-full flex-col">
           <div className="flex items-center justify-between px-3 py-3 md:px-4">
             <h2 className="text-[13px] font-semibold text-[var(--foreground)]">全部分类</h2>
@@ -327,7 +334,9 @@ export function Sidebar({ categories, activeCategoryId, onCategoryChange }: Side
               {categories.length}
             </span>
           </div>
-          <div className="min-h-0 flex-1 overflow-hidden px-1 md:px-2">{renderNav(false)}</div>
+          <div className="min-h-0 flex-1 overflow-hidden px-1 md:px-2">
+            {renderNav(showLeafSites)}
+          </div>
         </div>
       </aside>
     </>
