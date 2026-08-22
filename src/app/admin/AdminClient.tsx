@@ -1,16 +1,18 @@
 /**
- * 后台交互组件（M3）
+ * 后台交互组件（M3 全量站点管理）
  *
- * - 未登录：GitHub 登录卡片 + OAuth 错误提示
- * - 已登录：失效站点聚合列表（标题/URL/分类/报告数/最近时间）
- *   操作：打开核验（新标签直达）/ 清除报告 / 删除站点（confirm 二次确认）
+ * 分页表格：全量站点平铺
+ * - 工具栏：搜索（防抖）/ 顶级分类筛选 / 排序（标题/报告数/最新）
+ * - 表格：checkbox 多选 + favicon + 标题(链接) + URL + 分类 + 报告数 + 操作
+ * - 操作：打开核验 / 编辑（4 字段弹窗）/ 删除 / 批量删除
+ * - 分页控件 + 总数
  */
 
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-export interface DeadSite {
+export interface AdminSiteRow {
   id: string;
   title: string;
   url: string;
@@ -19,7 +21,20 @@ export interface DeadSite {
   categoryId?: string;
   categoryName?: string;
   reportCount: number;
-  lastReportAt: number | null;
+  createdAt?: string;
+}
+
+export interface SitePage {
+  items: AdminSiteRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface TopCategory {
+  id: string;
+  name: string;
+  icon?: string;
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -30,24 +45,15 @@ const ERROR_MESSAGES: Record<string, string> = {
   user: "获取 GitHub 用户信息失败，请重试",
 };
 
-/** unix ms → 本地时间字符串 */
-function formatTime(ts: number | null): string {
-  if (!ts) return "-";
-  const d = new Date(ts);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/** 轻量 toast（无依赖，沿用 M2 模式） */
+/** 轻量 toast（无依赖） */
 function Toast({ message }: { message: string }) {
   return (
-    <div className="fixed bottom-6 left-1/2 z-[70] -translate-x-1/2 rounded-full bg-[var(--neutral-900)] px-4 py-2 text-sm text-white shadow-lg">
+    <div className="fixed bottom-6 left-1/2 z-[80] -translate-x-1/2 rounded-full bg-[var(--neutral-900)] px-4 py-2 text-sm text-white shadow-lg">
       {message}
     </div>
   );
 }
 
-/** GitHub 图标（官方 mark，单色） */
 function GitHubIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -71,7 +77,9 @@ function LoginCard({ error }: { error?: string }) {
           <GitHubIcon className="h-6 w-6" />
         </div>
         <h1 className="text-xl font-bold text-[var(--foreground)]">后台管理</h1>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">核验并删除被报告失效的站点</p>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+          管理全站站点：搜索、编辑、删除
+        </p>
         {error && (
           <p className="mt-3 rounded-[var(--radius-md)] bg-[var(--error)]/10 px-3 py-2 text-sm text-[var(--error)]">
             {ERROR_MESSAGES[error] ?? "登录失败，请重试"}
@@ -89,68 +97,258 @@ function LoginCard({ error }: { error?: string }) {
   );
 }
 
+/** 编辑弹窗 */
+function EditModal({
+  site,
+  onClose,
+  onSave,
+}: {
+  site: AdminSiteRow;
+  onClose: () => void;
+  onSave: (fields: {
+    title: string;
+    url: string;
+    description: string;
+    favicon: string;
+  }) => Promise<void>;
+}) {
+  const [title, setTitle] = useState(site.title);
+  const [url, setUrl] = useState(site.url);
+  const [description, setDescription] = useState(site.description ?? "");
+  const [favicon, setFavicon] = useState(site.favicon ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!title.trim() || !url.trim()) return;
+    setSaving(true);
+    try {
+      await onSave({
+        title: title.trim(),
+        url: url.trim(),
+        description: description.trim(),
+        favicon: favicon.trim(),
+      });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls =
+    "w-full rounded-[var(--radius-md)] border border-[var(--input-border)] bg-[var(--background-secondary)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--neutral-900)]";
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="card w-full max-w-md p-6">
+        <h2 className="mb-4 text-lg font-bold text-[var(--foreground)]">编辑站点</h2>
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[var(--foreground-secondary)]">
+              标题 *
+            </label>
+            <input
+              className={inputCls}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[var(--foreground-secondary)]">
+              URL *
+            </label>
+            <input className={inputCls} value={url} onChange={(e) => setUrl(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[var(--foreground-secondary)]">
+              描述
+            </label>
+            <textarea
+              className={`${inputCls} min-h-16 resize-y`}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[var(--foreground-secondary)]">
+              favicon URL
+            </label>
+            <input
+              className={inputCls}
+              value={favicon}
+              onChange={(e) => setFavicon(e.target.value)}
+              placeholder="留空自动获取"
+            />
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-2 text-sm text-[var(--foreground-secondary)] hover:bg-[var(--muted)]"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            disabled={saving || !title.trim() || !url.trim()}
+            onClick={submit}
+            className="cursor-pointer rounded-[var(--radius-md)] bg-[var(--neutral-900)] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving ? "保存中…" : "保存"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminClient({
   login,
-  initialSites,
+  initialPage,
+  initialCategories,
   error,
 }: {
   login: string | null;
-  initialSites: DeadSite[];
+  initialPage: SitePage;
+  initialCategories: TopCategory[];
   error?: string;
 }) {
-  const [sites, setSites] = useState<DeadSite[]>(initialSites);
+  const [page, setPage] = useState<SitePage>(initialPage);
+  const [categories] = useState<TopCategory[]>(initialCategories);
+  const [q, setQ] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [sort, setSort] = useState<"title" | "reports" | "latest">("title");
+  const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<AdminSiteRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [pending, setPending] = useState<Set<string>>(new Set());
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2500);
   };
 
+  const load = useCallback(async (opts: { p?: number; q?: string; cat?: string; s?: string }) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(opts.p ?? 1),
+        pageSize: "20",
+        sort: opts.s ?? "title",
+      });
+      if (opts.q) params.set("q", opts.q);
+      if (opts.cat) params.set("categoryId", opts.cat);
+      const res = await fetch(`/api/admin/sites?${params.toString()}`);
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as SitePage;
+      setPage(data);
+      setSelected(new Set());
+    } catch {
+      showToast("加载失败，请重试");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // 搜索防抖
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      load({ p: 1, q: q.trim(), cat: categoryId, s: sort });
+    }, 400);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [q, categoryId, sort, load]);
+
   if (!login) {
     return <LoginCard error={error} />;
   }
 
-  const runAction = async (
-    site: DeadSite,
-    url: string,
-    confirmText: string,
-    successMsg: string
-  ) => {
-    if (!window.confirm(confirmText)) return;
-    setPending((prev) => new Set(prev).add(site.id));
+  const totalPages = Math.max(1, Math.ceil(page.total / page.pageSize));
+  const allSelected = page.items.length > 0 && page.items.every((s) => selected.has(s.id));
+
+  const toggleAll = () => {
+    setSelected((prev) => {
+      if (allSelected) return new Set();
+      const next = new Set(prev);
+      for (const s of page.items) next.add(s.id);
+      return next;
+    });
+  };
+
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const deleteOne = async (site: AdminSiteRow) => {
+    if (
+      !window.confirm(`确定删除「${site.title}」？\n站点将从导航中移除并清除全部报告，无法恢复。`)
+    )
+      return;
     try {
-      const res = await fetch(url, { method: "DELETE" });
+      const res = await fetch(`/api/admin/sites/${site.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
-      setSites((prev) => prev.filter((s) => s.id !== site.id));
-      showToast(successMsg);
+      showToast("已删除站点");
+      load({ p: page.page, q, cat: categoryId, s: sort });
     } catch {
-      showToast("操作失败，请稍后重试");
-    } finally {
-      setPending((prev) => {
-        const next = new Set(prev);
-        next.delete(site.id);
-        return next;
-      });
+      showToast("删除失败，请稍后重试");
     }
   };
 
-  const totalReports = sites.reduce((sum, s) => sum + s.reportCount, 0);
+  const deleteBatch = async () => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (!window.confirm(`确定删除选中的 ${ids.length} 个站点？\n无法恢复。`)) return;
+    try {
+      const res = await fetch(`/api/admin/sites?ids=${ids.join(",")}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      showToast(`已删除 ${ids.length} 个站点`);
+      load({ p: page.page, q, cat: categoryId, s: sort });
+    } catch {
+      showToast("批量删除失败，请稍后重试");
+    }
+  };
+
+  const saveEdit = async (fields: {
+    title: string;
+    url: string;
+    description: string;
+    favicon: string;
+  }) => {
+    if (!editing) return;
+    const res = await fetch(`/api/admin/sites/${editing.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    });
+    if (!res.ok) throw new Error();
+    showToast("已保存修改");
+    load({ p: page.page, q, cat: categoryId, s: sort });
+  };
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-8 md:px-8">
+    <div className="mx-auto w-full max-w-6xl px-4 py-8 md:px-8">
       {/* 顶部条 */}
-      <div className="mb-6 flex items-center justify-between gap-3">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">后台管理</h1>
           <p className="mt-0.5 text-sm text-[var(--muted-foreground)]">
             登录：<span className="font-medium text-[var(--foreground)]">{login}</span>
-            {sites.length > 0 && (
-              <span className="ml-2">
-                共 <span className="font-medium tabular-nums">{sites.length}</span> 个失效站点 ·{" "}
-                <span className="font-medium tabular-nums">{totalReports}</span> 条报告
-              </span>
-            )}
+            <span className="ml-2">
+              共 <span className="font-medium tabular-nums">{page.total}</span> 个站点
+            </span>
           </p>
         </div>
         <form action="/api/auth/logout" method="post">
@@ -163,95 +361,210 @@ export default function AdminClient({
         </form>
       </div>
 
-      {/* 列表 */}
-      {sites.length === 0 ? (
-        <div className="empty-state">
-          <div className="mb-3 text-3xl">🎉</div>
-          <div className="text-lg font-semibold">没有失效站点</div>
-          <div className="mt-1 text-sm text-[var(--muted-foreground)]">暂无用户报告的失效站点</div>
-        </div>
-      ) : (
-        <ul className="space-y-3">
-          {sites.map((site) => (
-            <li key={site.id} className="card p-4">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-[var(--foreground)]">{site.title}</span>
-                    <span className="rounded-full bg-[var(--error)]/10 px-2 py-0.5 text-xs font-medium tabular-nums text-[var(--error)]">
-                      {site.reportCount} 次报告
-                    </span>
-                  </div>
-                  <a
-                    href={site.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-0.5 block truncate text-sm text-[var(--accent-500)] hover:underline"
-                  >
-                    {site.url}
-                  </a>
-                  {site.description && (
-                    <p className="mt-1 line-clamp-1 text-[13px] text-[var(--muted-foreground)]">
-                      {site.description}
-                    </p>
-                  )}
-                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                    所属分类：
-                    <span className="text-[var(--foreground-secondary)]">
-                      {site.categoryName ?? "未知"}
-                    </span>
-                    <span className="mx-1.5">·</span>
-                    最近报告：<span className="tabular-nums">{formatTime(site.lastReportAt)}</span>
-                  </p>
-                </div>
-
-                {/* 操作 */}
-                <div className="flex flex-shrink-0 items-center gap-2">
-                  <a
-                    href={site.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-[var(--radius-md)] border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--foreground-secondary)] transition-colors hover:bg-[var(--muted)]"
-                  >
-                    打开核验 ↗
-                  </a>
-                  <button
-                    type="button"
-                    disabled={pending.has(site.id)}
-                    onClick={() =>
-                      runAction(
-                        site,
-                        `/api/admin/sites/${site.id}/reports`,
-                        `确定清除「${site.title}」的失效报告？\n站点本身不会被删除。`,
-                        "已清除报告"
-                      )
-                    }
-                    className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--foreground-secondary)] transition-colors hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    清除报告
-                  </button>
-                  <button
-                    type="button"
-                    disabled={pending.has(site.id)}
-                    onClick={() =>
-                      runAction(
-                        site,
-                        `/api/admin/sites/${site.id}`,
-                        `确定删除「${site.title}」？\n站点将从导航中移除并清除全部报告，无法恢复。`,
-                        "已删除站点"
-                      )
-                    }
-                    className="cursor-pointer rounded-[var(--radius-md)] bg-[var(--error)] px-2.5 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    删除站点
-                  </button>
-                </div>
-              </div>
-            </li>
+      {/* 工具栏 */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <input
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="搜索标题 / URL / 描述…"
+          className="input !w-56 !py-2"
+        />
+        <select
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+          className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--input-border)] bg-[var(--background-secondary)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--neutral-900)]"
+        >
+          <option value="">全部分类</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
           ))}
-        </ul>
+        </select>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as "title" | "reports" | "latest")}
+          className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--input-border)] bg-[var(--background-secondary)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--neutral-900)]"
+        >
+          <option value="title">按标题排序</option>
+          <option value="reports">按报告数排序</option>
+          <option value="latest">按添加时间排序</option>
+        </select>
+        {selected.size > 0 && (
+          <button
+            type="button"
+            onClick={deleteBatch}
+            className="cursor-pointer rounded-[var(--radius-md)] bg-[var(--error)] px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          >
+            删除选中（{selected.size}）
+          </button>
+        )}
+        <span className="ml-auto text-xs tabular-nums text-[var(--muted-foreground)]">
+          {loading ? "加载中…" : `第 ${page.page} / ${totalPages} 页`}
+        </span>
+      </div>
+
+      {/* 表格 */}
+      <div className="card overflow-x-auto">
+        <table className="w-full min-w-[720px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+              <th className="w-10 px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  aria-label="全选"
+                />
+              </th>
+              <th className="px-3 py-2.5 font-medium">标题</th>
+              <th className="px-3 py-2.5 font-medium">URL</th>
+              <th className="px-3 py-2.5 font-medium">分类</th>
+              <th className="px-3 py-2.5 text-center font-medium">报告</th>
+              <th className="px-3 py-2.5 text-right font-medium">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {page.items.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={6}
+                  className="px-3 py-12 text-center text-sm text-[var(--muted-foreground)]"
+                >
+                  没有匹配的站点
+                </td>
+              </tr>
+            ) : (
+              page.items.map((site) => (
+                <tr
+                  key={site.id}
+                  className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--muted)]/40"
+                >
+                  <td className="px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(site.id)}
+                      onChange={() => toggleOne(site.id)}
+                      aria-label={`选择 ${site.title}`}
+                    />
+                  </td>
+                  <td className="max-w-[220px] px-3 py-2.5">
+                    <a
+                      href={site.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`${site.title}\n${site.url}`}
+                      className="flex items-center gap-2 font-medium text-[var(--foreground)] hover:text-[var(--accent-500)]"
+                    >
+                      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded text-[10px]">
+                        {site.favicon ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- 后台 favicon 轻量展示
+                          <img
+                            src={site.favicon}
+                            alt=""
+                            className="h-5 w-5 object-contain"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).style.display = "none";
+                            }}
+                          />
+                        ) : null}
+                      </span>
+                      <span className="truncate">{site.title}</span>
+                    </a>
+                    {site.description && (
+                      <p className="mt-0.5 max-w-[220px] truncate text-xs text-[var(--muted-foreground)]">
+                        {site.description}
+                      </p>
+                    )}
+                  </td>
+                  <td className="max-w-[240px] px-3 py-2.5">
+                    <a
+                      href={site.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block truncate text-[var(--accent-500)] hover:underline"
+                    >
+                      {site.url}
+                    </a>
+                  </td>
+                  <td className="px-3 py-2.5 text-[var(--foreground-secondary)]">
+                    {site.categoryName ?? "未知"}
+                  </td>
+                  <td className="px-3 py-2.5 text-center">
+                    {site.reportCount > 0 ? (
+                      <span className="rounded-full bg-[var(--error)]/10 px-2 py-0.5 text-xs font-medium tabular-nums text-[var(--error)]">
+                        {site.reportCount}
+                      </span>
+                    ) : (
+                      <span className="text-xs tabular-nums text-[var(--muted-foreground)]">0</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <a
+                        href={site.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="打开核验"
+                        className="rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground-secondary)] hover:bg-[var(--muted)]"
+                      >
+                        打开 ↗
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setEditing(site)}
+                        className="cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground-secondary)] hover:bg-[var(--muted)]"
+                      >
+                        编辑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteOne(site)}
+                        className="cursor-pointer rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 分页 */}
+      {page.total > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+          <span className="text-xs text-[var(--muted-foreground)]">
+            共 {page.total} 条 · 每页 {page.pageSize} 条
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={page.page <= 1}
+              onClick={() => load({ p: page.page - 1, q, cat: categoryId, s: sort })}
+              className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[var(--foreground-secondary)] hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              上一页
+            </button>
+            <span className="px-2 tabular-nums text-[var(--foreground)]">
+              {page.page} / {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={page.page >= totalPages}
+              onClick={() => load({ p: page.page + 1, q, cat: categoryId, s: sort })}
+              className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[var(--foreground-secondary)] hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              下一页
+            </button>
+          </div>
+        </div>
       )}
 
+      {editing && <EditModal site={editing} onClose={() => setEditing(null)} onSave={saveEdit} />}
       {toast && <Toast message={toast} />}
     </div>
   );
