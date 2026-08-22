@@ -103,6 +103,25 @@ function normalizeUrl(u) {
     .toLowerCase();
 }
 
+/** 移除 URL 中携带 luckman/axutongxue 字样的追踪参数（utm_source 等），
+ * 2026-08-22 用户明确：页面不要出现这两个数据源名字 */
+function cleanBrandUrl(u) {
+  if (!u) return u;
+  try {
+    const url = new URL(u);
+    let changed = false;
+    for (const [k, v] of [...url.searchParams.entries()]) {
+      if (/luckman|axutongxue/i.test(k) || /luckman|axutongxue/i.test(v)) {
+        url.searchParams.delete(k);
+        changed = true;
+      }
+    }
+    return changed ? url.toString() : u;
+  } catch {
+    return u;
+  }
+}
+
 // -------------------- 递归转换 --------------------
 const seenUrls = new Set(); // 全局去重（跨源）
 
@@ -130,7 +149,7 @@ function buildNode(node, parentId, depth, stats) {
     category.sites.push({
       id: siteId(category.id, item),
       title: item.title,
-      url: item.url,
+      url: cleanBrandUrl(item.url),
       description: extra.description,
       sort: category.sites.length,
       createdAt: item.added || undefined,
