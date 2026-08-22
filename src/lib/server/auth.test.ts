@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, it, beforeEach } from "vitest";
+import { createHmac } from "node:crypto";
 import { createSessionToken, verifySessionToken, getSessionLogin, adminLogin } from "./auth";
 
 const SECRET = "test-secret-0123456789-abcdefghijklmn";
@@ -32,7 +33,7 @@ describe("createSessionToken / verifySessionToken", () => {
 
   it("payload 被篡改 → null（签名不匹配）", () => {
     const token = createSessionToken("wu529778790");
-    const [payload, sig] = token.split(".");
+    const [, sig] = token.split(".");
     // 篡改 payload：换成另一个用户
     const forgedPayload = Buffer.from(
       JSON.stringify({ sub: "attacker", exp: Math.floor(Date.now() / 1000) + 3600 })
@@ -51,7 +52,6 @@ describe("createSessionToken / verifySessionToken", () => {
     const expiredPayload = Buffer.from(
       JSON.stringify({ sub: "wu529778790", exp: Math.floor(Date.now() / 1000) - 10 })
     ).toString("base64url");
-    const { createHmac } = require("node:crypto");
     const sig = createHmac("sha256", SECRET).update(expiredPayload).digest("base64url");
     expect(verifySessionToken(`${expiredPayload}.${sig}`)).toBeNull();
   });
