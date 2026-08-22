@@ -22,16 +22,29 @@ export function AppHeader({ searchValue, onSearchChange }: AppHeaderProps) {
     <header className="sticky top-0 z-[45] h-16 w-full border-b border-[var(--border)] bg-[var(--background-secondary)]">
       <div className="mx-auto flex h-full max-w-[1440px] items-center justify-between gap-4 px-4 md:px-6">
         {/* Logo */}
-        <Link href="/" className="flex flex-shrink-0 items-center gap-2.5" aria-label="储物间首页">
+        <Link
+          href="/"
+          className="flex flex-shrink-0 items-center gap-2.5"
+          aria-label="神族九帝的收藏夹首页"
+        >
           <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] bg-[var(--neutral-900)]">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden
+            >
               <path
                 d="M3 6.5C3 5.67 3.67 5 4.5 5H9.5L11.5 7H19.5C20.33 7 21 7.67 21 8.5V17.5C21 18.33 20.33 19 19.5 19H4.5C3.67 19 3 18.33 3 17.5V6.5Z"
                 fill="#FFD400"
               />
             </svg>
           </span>
-          <span className="text-lg font-bold tracking-tight text-[var(--foreground)]">储物间</span>
+          <span className="text-lg font-bold tracking-tight text-[var(--foreground)]">
+            神族九帝的收藏夹
+          </span>
         </Link>
 
         {/* 全局搜索框 */}
@@ -47,7 +60,12 @@ export function AppHeader({ searchValue, onSearchChange }: AppHeaderProps) {
               aria-hidden
             >
               <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
-              <path d="M16.5 16.5L21 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path
+                d="M16.5 16.5L21 21"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
             </svg>
             <input
               ref={inputRef}
