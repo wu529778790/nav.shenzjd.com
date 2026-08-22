@@ -37,6 +37,25 @@ export interface TopCategory {
   icon?: string;
 }
 
+export interface TrashSite {
+  id: string;
+  title: string;
+  url: string;
+  favicon?: string;
+  description?: string;
+  categoryId?: string;
+  categoryName?: string;
+  deletedAt: number | null;
+}
+
+/** unix ms → 本地时间 */
+function formatTime(ts: number | null): string {
+  if (!ts) return "-";
+  const d = new Date(ts);
+  const pad = (x: number) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const ERROR_MESSAGES: Record<string, string> = {
   state: "登录状态校验失败，请重新登录",
   forbidden: "该 GitHub 账号无权访问后台",
@@ -229,6 +248,11 @@ export default function AdminClient({
   const [toast, setToast] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 垃圾箱（回收站）
+  const [tab, setTab] = useState<"sites" | "trash">("sites");
+  const [trash, setTrash] = useState<TrashSite[]>([]);
+  const [trashSelected, setTrashSelected] = useState<Set<string>>(new Set());
+
   const showToast = (msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2500);
@@ -267,6 +291,23 @@ export default function AdminClient({
     };
   }, [q, categoryId, sort, load]);
 
+  // 切到垃圾箱 tab 时加载
+  const loadTrash = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/trash");
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as { items: TrashSite[] };
+      setTrash(data.items ?? []);
+      setTrashSelected(new Set());
+    } catch {
+      showToast("加载垃圾箱失败，请重试");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "trash" && login) void loadTrash();
+  }, [tab, login, loadTrash]);
+
   if (!login) {
     return <LoginCard error={error} />;
   }
@@ -293,14 +334,11 @@ export default function AdminClient({
   };
 
   const deleteOne = async (site: AdminSiteRow) => {
-    if (
-      !window.confirm(`确定删除「${site.title}」？\n站点将从导航中移除并清除全部报告，无法恢复。`)
-    )
-      return;
+    if (!window.confirm(`将「${site.title}」移到垃圾箱？\n可从垃圾箱恢复。`)) return;
     try {
       const res = await fetch(`/api/admin/sites/${site.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
-      showToast("已删除站点");
+      showToast("已移到垃圾箱");
       load({ p: page.page, q, cat: categoryId, s: sort });
     } catch {
       showToast("删除失败，请稍后重试");
@@ -310,14 +348,70 @@ export default function AdminClient({
   const deleteBatch = async () => {
     const ids = [...selected];
     if (ids.length === 0) return;
-    if (!window.confirm(`确定删除选中的 ${ids.length} 个站点？\n无法恢复。`)) return;
+    if (!window.confirm(`将选中的 ${ids.length} 个站点移到垃圾箱？\n可从垃圾箱恢复。`)) return;
     try {
       const res = await fetch(`/api/admin/sites?ids=${ids.join(",")}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
-      showToast(`已删除 ${ids.length} 个站点`);
+      showToast(`已移动 ${ids.length} 个站点到垃圾箱`);
       load({ p: page.page, q, cat: categoryId, s: sort });
     } catch {
       showToast("批量删除失败，请稍后重试");
+    }
+  };
+
+  // ============ 垃圾箱操作 ============
+
+  const trashAllSelected = trash.length > 0 && trash.every((s) => trashSelected.has(s.id));
+
+  const toggleTrashAll = () => {
+    setTrashSelected((prev) => {
+      if (trashAllSelected) return new Set();
+      const next = new Set(prev);
+      for (const s of trash) next.add(s.id);
+      return next;
+    });
+  };
+
+  const toggleTrashOne = (id: string) => {
+    setTrashSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const restore = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    try {
+      const res = await fetch("/api/admin/trash/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error();
+      showToast(`已恢复 ${ids.length} 个站点`);
+      void loadTrash();
+    } catch {
+      showToast("恢复失败，请稍后重试");
+    }
+  };
+
+  const purge = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    if (
+      !window.confirm(
+        `确定永久删除 ${ids.length} 个站点？\n将从数据库彻底移除并清除全部报告，无法恢复。`
+      )
+    )
+      return;
+    try {
+      const res = await fetch(`/api/admin/trash?ids=${ids.join(",")}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      showToast(`已永久删除 ${ids.length} 个站点`);
+      void loadTrash();
+    } catch {
+      showToast("永久删除失败，请稍后重试");
     }
   };
 
@@ -361,207 +455,378 @@ export default function AdminClient({
         </form>
       </div>
 
-      {/* 工具栏 */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <input
-          type="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="搜索标题 / URL / 描述…"
-          className="input !w-56 !py-2"
-        />
-        <select
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
-          className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--input-border)] bg-[var(--background-secondary)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--neutral-900)]"
+      {/* Tab 切换：站点管理 / 垃圾箱 */}
+      <div className="mb-4 flex items-center gap-1 border-b border-[var(--border)]">
+        <button
+          type="button"
+          onClick={() => setTab("sites")}
+          className={`cursor-pointer border-b-2 px-3 py-2 text-sm transition-colors ${
+            tab === "sites"
+              ? "border-[var(--neutral-900)] font-medium text-[var(--foreground)]"
+              : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+          }`}
         >
-          <option value="">全部分类</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value as "title" | "reports" | "latest")}
-          className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--input-border)] bg-[var(--background-secondary)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--neutral-900)]"
+          站点管理
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("trash")}
+          className={`cursor-pointer border-b-2 px-3 py-2 text-sm transition-colors ${
+            tab === "trash"
+              ? "border-[var(--neutral-900)] font-medium text-[var(--foreground)]"
+              : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+          }`}
         >
-          <option value="title">按标题排序</option>
-          <option value="reports">按报告数排序</option>
-          <option value="latest">按添加时间排序</option>
-        </select>
-        {selected.size > 0 && (
-          <button
-            type="button"
-            onClick={deleteBatch}
-            className="cursor-pointer rounded-[var(--radius-md)] bg-[var(--error)] px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-          >
-            删除选中（{selected.size}）
-          </button>
-        )}
-        <span className="ml-auto text-xs tabular-nums text-[var(--muted-foreground)]">
-          {loading ? "加载中…" : `第 ${page.page} / ${totalPages} 页`}
-        </span>
+          垃圾箱
+          {trash.length > 0 && (
+            <span className="ml-1.5 rounded-full bg-[var(--error)]/10 px-1.5 py-0.5 text-xs tabular-nums text-[var(--error)]">
+              {trash.length}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* 表格 */}
-      <div className="card overflow-x-auto">
-        <table className="w-full min-w-[720px] text-left text-sm">
-          <thead>
-            <tr className="border-b border-[var(--border)] text-xs text-[var(--muted-foreground)]">
-              <th className="w-10 px-3 py-2.5">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={toggleAll}
-                  aria-label="全选"
-                />
-              </th>
-              <th className="px-3 py-2.5 font-medium">标题</th>
-              <th className="px-3 py-2.5 font-medium">URL</th>
-              <th className="px-3 py-2.5 font-medium">分类</th>
-              <th className="px-3 py-2.5 text-center font-medium">报告</th>
-              <th className="px-3 py-2.5 text-right font-medium">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {page.items.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="px-3 py-12 text-center text-sm text-[var(--muted-foreground)]"
-                >
-                  没有匹配的站点
-                </td>
-              </tr>
-            ) : (
-              page.items.map((site) => (
-                <tr
-                  key={site.id}
-                  className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--muted)]/40"
-                >
-                  <td className="px-3 py-2.5">
+      {tab === "sites" && (
+        <>
+          {/* 工具栏 */}
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="搜索标题 / URL / 描述…"
+              className="input !w-56 !py-2"
+            />
+            <select
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--input-border)] bg-[var(--background-secondary)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--neutral-900)]"
+            >
+              <option value="">全部分类</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as "title" | "reports" | "latest")}
+              className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--input-border)] bg-[var(--background-secondary)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--neutral-900)]"
+            >
+              <option value="title">按标题排序</option>
+              <option value="reports">按报告数排序</option>
+              <option value="latest">按添加时间排序</option>
+            </select>
+            {selected.size > 0 && (
+              <button
+                type="button"
+                onClick={deleteBatch}
+                className="cursor-pointer rounded-[var(--radius-md)] bg-[var(--error)] px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+              >
+                删除选中（{selected.size}）
+              </button>
+            )}
+            <span className="ml-auto text-xs tabular-nums text-[var(--muted-foreground)]">
+              {loading ? "加载中…" : `第 ${page.page} / ${totalPages} 页`}
+            </span>
+          </div>
+
+          {/* 表格 */}
+          <div className="card overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+                  <th className="w-10 px-3 py-2.5">
                     <input
                       type="checkbox"
-                      checked={selected.has(site.id)}
-                      onChange={() => toggleOne(site.id)}
-                      aria-label={`选择 ${site.title}`}
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      aria-label="全选"
                     />
-                  </td>
-                  <td className="max-w-[220px] px-3 py-2.5">
-                    <a
-                      href={site.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={`${site.title}\n${site.url}`}
-                      className="flex items-center gap-2 font-medium text-[var(--foreground)] hover:text-[var(--accent-500)]"
-                    >
-                      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded text-[10px]">
-                        {site.favicon ? (
-                          // eslint-disable-next-line @next/next/no-img-element -- 后台 favicon 轻量展示
-                          <img
-                            src={site.favicon}
-                            alt=""
-                            className="h-5 w-5 object-contain"
-                            onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).style.display = "none";
-                            }}
-                          />
-                        ) : null}
-                      </span>
-                      <span className="truncate">{site.title}</span>
-                    </a>
-                    {site.description && (
-                      <p className="mt-0.5 max-w-[220px] truncate text-xs text-[var(--muted-foreground)]">
-                        {site.description}
-                      </p>
-                    )}
-                  </td>
-                  <td className="max-w-[240px] px-3 py-2.5">
-                    <a
-                      href={site.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block truncate text-[var(--accent-500)] hover:underline"
-                    >
-                      {site.url}
-                    </a>
-                  </td>
-                  <td className="px-3 py-2.5 text-[var(--foreground-secondary)]">
-                    {site.categoryName ?? "未知"}
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    {site.reportCount > 0 ? (
-                      <span className="rounded-full bg-[var(--error)]/10 px-2 py-0.5 text-xs font-medium tabular-nums text-[var(--error)]">
-                        {site.reportCount}
-                      </span>
-                    ) : (
-                      <span className="text-xs tabular-nums text-[var(--muted-foreground)]">0</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <a
-                        href={site.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="打开核验"
-                        className="rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground-secondary)] hover:bg-[var(--muted)]"
-                      >
-                        打开 ↗
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => setEditing(site)}
-                        className="cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground-secondary)] hover:bg-[var(--muted)]"
-                      >
-                        编辑
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteOne(site)}
-                        className="cursor-pointer rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"
-                      >
-                        删除
-                      </button>
-                    </div>
-                  </td>
+                  </th>
+                  <th className="px-3 py-2.5 font-medium">标题</th>
+                  <th className="px-3 py-2.5 font-medium">URL</th>
+                  <th className="px-3 py-2.5 font-medium">分类</th>
+                  <th className="px-3 py-2.5 text-center font-medium">报告</th>
+                  <th className="px-3 py-2.5 text-right font-medium">操作</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* 分页 */}
-      {page.total > 0 && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
-          <span className="text-xs text-[var(--muted-foreground)]">
-            共 {page.total} 条 · 每页 {page.pageSize} 条
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              disabled={page.page <= 1}
-              onClick={() => load({ p: page.page - 1, q, cat: categoryId, s: sort })}
-              className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[var(--foreground-secondary)] hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              上一页
-            </button>
-            <span className="px-2 tabular-nums text-[var(--foreground)]">
-              {page.page} / {totalPages}
-            </span>
-            <button
-              type="button"
-              disabled={page.page >= totalPages}
-              onClick={() => load({ p: page.page + 1, q, cat: categoryId, s: sort })}
-              className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[var(--foreground-secondary)] hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              下一页
-            </button>
+              </thead>
+              <tbody>
+                {page.items.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-3 py-12 text-center text-sm text-[var(--muted-foreground)]"
+                    >
+                      没有匹配的站点
+                    </td>
+                  </tr>
+                ) : (
+                  page.items.map((site) => (
+                    <tr
+                      key={site.id}
+                      className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--muted)]/40"
+                    >
+                      <td className="px-3 py-2.5">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(site.id)}
+                          onChange={() => toggleOne(site.id)}
+                          aria-label={`选择 ${site.title}`}
+                        />
+                      </td>
+                      <td className="max-w-[220px] px-3 py-2.5">
+                        <a
+                          href={site.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`${site.title}\n${site.url}`}
+                          className="flex items-center gap-2 font-medium text-[var(--foreground)] hover:text-[var(--accent-500)]"
+                        >
+                          <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded text-[10px]">
+                            {site.favicon ? (
+                              // eslint-disable-next-line @next/next/no-img-element -- 后台 favicon 轻量展示
+                              <img
+                                src={site.favicon}
+                                alt=""
+                                className="h-5 w-5 object-contain"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                                }}
+                              />
+                            ) : null}
+                          </span>
+                          <span className="truncate">{site.title}</span>
+                        </a>
+                        {site.description && (
+                          <p className="mt-0.5 max-w-[220px] truncate text-xs text-[var(--muted-foreground)]">
+                            {site.description}
+                          </p>
+                        )}
+                      </td>
+                      <td className="max-w-[240px] px-3 py-2.5">
+                        <a
+                          href={site.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block truncate text-[var(--accent-500)] hover:underline"
+                        >
+                          {site.url}
+                        </a>
+                      </td>
+                      <td className="px-3 py-2.5 text-[var(--foreground-secondary)]">
+                        {site.categoryName ?? "未知"}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        {site.reportCount > 0 ? (
+                          <span className="rounded-full bg-[var(--error)]/10 px-2 py-0.5 text-xs font-medium tabular-nums text-[var(--error)]">
+                            {site.reportCount}
+                          </span>
+                        ) : (
+                          <span className="text-xs tabular-nums text-[var(--muted-foreground)]">
+                            0
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <a
+                            href={site.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="打开核验"
+                            className="rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground-secondary)] hover:bg-[var(--muted)]"
+                          >
+                            打开 ↗
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => setEditing(site)}
+                            className="cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground-secondary)] hover:bg-[var(--muted)]"
+                          >
+                            编辑
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteOne(site)}
+                            className="cursor-pointer rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"
+                          >
+                            删除
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        </div>
+
+          {/* 分页 */}
+          {page.total > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+              <span className="text-xs text-[var(--muted-foreground)]">
+                共 {page.total} 条 · 每页 {page.pageSize} 条
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={page.page <= 1}
+                  onClick={() => load({ p: page.page - 1, q, cat: categoryId, s: sort })}
+                  className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[var(--foreground-secondary)] hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  上一页
+                </button>
+                <span className="px-2 tabular-nums text-[var(--foreground)]">
+                  {page.page} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={page.page >= totalPages}
+                  onClick={() => load({ p: page.page + 1, q, cat: categoryId, s: sort })}
+                  className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[var(--foreground-secondary)] hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ============ 垃圾箱视图 ============ */}
+      {tab === "trash" && (
+        <>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <span className="text-sm text-[var(--foreground-secondary)]">
+              共 <span className="font-medium tabular-nums">{trash.length}</span> 个站点
+            </span>
+            {trashSelected.size > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => restore([...trashSelected])}
+                  className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-2 text-sm text-[var(--foreground-secondary)] hover:bg-[var(--muted)]"
+                >
+                  恢复选中（{trashSelected.size}）
+                </button>
+                <button
+                  type="button"
+                  onClick={() => purge([...trashSelected])}
+                  className="cursor-pointer rounded-[var(--radius-md)] bg-[var(--error)] px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                >
+                  永久删除选中（{trashSelected.size}）
+                </button>
+              </>
+            )}
+            <span className="ml-auto text-xs text-[var(--muted-foreground)]">
+              删除 = 移入垃圾箱，可恢复；永久删除不可恢复
+            </span>
+          </div>
+
+          <div className="card overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+                  <th className="w-10 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={trashAllSelected}
+                      onChange={toggleTrashAll}
+                      aria-label="全选"
+                    />
+                  </th>
+                  <th className="px-3 py-2.5 font-medium">标题</th>
+                  <th className="px-3 py-2.5 font-medium">URL</th>
+                  <th className="px-3 py-2.5 font-medium">分类</th>
+                  <th className="px-3 py-2.5 font-medium">删除时间</th>
+                  <th className="px-3 py-2.5 text-right font-medium">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trash.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-3 py-12 text-center text-sm text-[var(--muted-foreground)]"
+                    >
+                      垃圾箱是空的
+                    </td>
+                  </tr>
+                ) : (
+                  trash.map((site) => (
+                    <tr
+                      key={site.id}
+                      className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--muted)]/40"
+                    >
+                      <td className="px-3 py-2.5">
+                        <input
+                          type="checkbox"
+                          checked={trashSelected.has(site.id)}
+                          onChange={() => toggleTrashOne(site.id)}
+                          aria-label={`选择 ${site.title}`}
+                        />
+                      </td>
+                      <td className="max-w-[220px] px-3 py-2.5">
+                        <span className="flex items-center gap-2 font-medium text-[var(--foreground)]">
+                          <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded text-[10px]">
+                            {site.favicon ? (
+                              // eslint-disable-next-line @next/next/no-img-element -- 后台 favicon 轻量展示
+                              <img
+                                src={site.favicon}
+                                alt=""
+                                className="h-5 w-5 object-contain"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                                }}
+                              />
+                            ) : null}
+                          </span>
+                          <span className="truncate">{site.title}</span>
+                        </span>
+                        {site.description && (
+                          <p className="mt-0.5 max-w-[220px] truncate text-xs text-[var(--muted-foreground)]">
+                            {site.description}
+                          </p>
+                        )}
+                      </td>
+                      <td className="max-w-[240px] px-3 py-2.5">
+                        <span className="block truncate text-[var(--foreground-secondary)]">
+                          {site.url}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-[var(--foreground-secondary)]">
+                        {site.categoryName ?? "未知"}
+                      </td>
+                      <td className="px-3 py-2.5 tabular-nums text-[var(--muted-foreground)]">
+                        {formatTime(site.deletedAt)}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => restore([site.id])}
+                            className="cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground-secondary)] hover:bg-[var(--muted)]"
+                          >
+                            恢复
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => purge([site.id])}
+                            className="cursor-pointer rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"
+                          >
+                            永久删除
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {editing && <EditModal site={editing} onClose={() => setEditing(null)} onSave={saveEdit} />}
