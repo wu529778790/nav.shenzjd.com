@@ -9,6 +9,7 @@
 
 import { useRef } from "react";
 import Link from "next/link";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface AppHeaderProps {
   searchValue: string;
@@ -56,6 +57,7 @@ export function AppHeader({ searchValue, onSearchChange, onLogoClick }: AppHeade
         {/* 全局搜索框 */}
         <div className="flex min-w-0 flex-1 justify-end">
           <div className="flex h-10 w-full max-w-md items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--muted)] px-3 transition-colors focus-within:border-[var(--neutral-900)]">
+            {" "}
             <svg
               width="16"
               height="16"
@@ -87,6 +89,9 @@ export function AppHeader({ searchValue, onSearchChange, onLogoClick }: AppHeade
             </kbd>
           </div>
         </div>
+
+        {/* 深浅色模式切换 */}
+        <ThemeToggle />
       </div>
     </header>
   );
