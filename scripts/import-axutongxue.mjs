@@ -93,6 +93,14 @@ function isWeixinArticle(url) {
   return typeof url === "string" && /mp\.weixin\.qq\.com/i.test(url);
 }
 
+/** 网盘 / 内容分享类链接（非正经网站，2026-08-22 用户明确过滤）
+ * 知乎问答、各大网盘分享盘（百度/夸克/城通/MediaFire/蓝奏云/阿里云盘/迅雷云盘/天翼云盘/123/华硕/Syncplicity/移动云盘） */
+const NON_STANDARD_URL_RE =
+  /(?:zhihu\.com|pan\.baidu\.com|pan\.quark\.cn|ctfile\.com|mediafire\.com|lanzou[a-z]*\.(?:com|cn|net|org)|aliyundrive\.com|syncplicity\.com|ysepan\.com|pan\.xunlei\.com|cloud\.189\.cn|asuswebstorage\.com|123pan\.com)/i;
+function isNonStandardUrl(url) {
+  return typeof url === "string" && NON_STANDARD_URL_RE.test(url);
+}
+
 function buildNode(node, parentId, depth) {
   const name = (node.name || "").trim();
   // 广告分类整树剔除（2026-08-22 用户明确：特惠福利精选 全是广告）
@@ -112,14 +120,14 @@ function buildNode(node, parentId, depth) {
     const type = item.type || "normal";
     // note / 无 url 且非 expandable → 跳过
     if (!item.url && type !== "expandable") continue;
-    // 微信公众文章 → 跳过（广告）
-    if (isWeixinArticle(item.url)) continue;
+    // 微信公众文章 / 网盘分享 → 跳过
+    if (isWeixinArticle(item.url) || isNonStandardUrl(item.url)) continue;
 
     if (type === "expandable" && Array.isArray(item.links) && item.links.length > 0) {
       // 展开为多个 site，title 用「父标题 · 子标题」避免丢失上下文
       for (const link of item.links) {
         if (!link.url) continue;
-        if (isWeixinArticle(link.url)) continue;
+        if (isWeixinArticle(link.url) || isNonStandardUrl(link.url)) continue;
         category.sites.push({
           id: siteId(category.id, link),
           title: `${item.title} · ${link.title}`.slice(0, 80),
