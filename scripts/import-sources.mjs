@@ -1,17 +1,17 @@
 /**
- * axutongxue → Turso 树形数据灌入脚本（2026-08-21）
+ * 多数据源 → Turso 树形数据灌入脚本（2026-08-22 多源合并版）
  *
- * 数据源：~/github/navdata/data/axutongxue.json（阿虚同学的储物间）
- * 结构：递归树 categories[]（name/items/children），最深 5 层
- * 转换规则：
- * - 每个分类节点 → categories 一行（parent_id 关联父节点）
- * - 每个 item → sites 一行（挂在所属分类节点下）
- * - expandable item（url 为空 + links 数组）→ 展开为多个 site
- * - note 类型（url 为 null）→ 跳过（是说明文字非链接）
- * - 「分隔线」占位节点 → 跳过
- * - 微信公众文章（mp.weixin.qq.com）→ 跳过（广告，2026-08-22 用户明确过滤）
+ * 数据源（默认两个，均可通过 --sources 指定）：
+ * - ~/github/navdata/data/axutongxue.json（阿虚同学的储物间）
+ * - ~/github/navdata/data/luckman.json（luckman补给营地）
  *
- * 用法: node scripts/import-axutongxue.mjs [--source <path>] [--dry-run]
+ * 合并策略：
+ * - 各源顶级分类**并列**（axutongxue 01-14 体系 + luckman A-Z 体系）
+ * - 全局 URL 去重（按数据源顺序优先，axutongxue 在前 → 重复时保留 axutongxue）
+ * - 每个源内部沿用过滤：分隔线 / 特惠福利精选 / 微信公众文章 / 网盘分享类
+ * - luckman 特例：剔除「生活 ︱ 流量、破解 E 💰」顶级分类（破解软件/返利/外卖券等广告灰色内容）
+ *
+ * 用法: node scripts/import-sources.mjs [--sources a.json,b.json] [--dry-run]
  * 环境变量从仓库根 .env 读取。
  */
 
@@ -23,11 +23,12 @@ import path from "node:path";
 // -------------------- 参数解析 --------------------
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
-const sourceIdx = args.indexOf("--source");
-const SOURCE_PATH =
-  sourceIdx > -1 && args[sourceIdx + 1]
-    ? args[sourceIdx + 1]
-    : path.join(os.homedir(), "github", "navdata", "data", "axutongxue.json");
+const sourcesIdx = args.indexOf("--sources");
+const DATA_DIR = path.join(os.homedir(), "github", "navdata", "data");
+const SOURCES =
+  sourcesIdx > -1 && args[sourcesIdx + 1]
+    ? args[sourcesIdx + 1].split(",").map((s) => s.trim()).filter(Boolean)
+    : ["axutongxue.json", "luckman.json"];
 
 // -------------------- 环境变量 --------------------
 const envPath = path.join(process.cwd(), ".env");
@@ -43,15 +44,6 @@ if (!url || !authToken) {
   console.error("缺少 TURSO_DATABASE_URL / TURSO_AUTH_TOKEN（.env）");
   process.exit(1);
 }
-
-// -------------------- 读取数据 --------------------
-if (!fs.existsSync(SOURCE_PATH)) {
-  console.error("数据源不存在:", SOURCE_PATH);
-  process.exit(1);
-}
-const raw = JSON.parse(fs.readFileSync(SOURCE_PATH, "utf8"));
-const rootCats = raw.categories || [];
-console.log(`数据源: ${raw.site} (${raw.site_url})  顶级分类 ${rootCats.length} 个`);
 
 // -------------------- 稳定短哈希 --------------------
 function shortHash(str) {
@@ -79,21 +71,23 @@ function siteId(categoryId, item) {
 function extractEmoji(s) {
   if (!s) return undefined;
   const m = s.match(
-    /(?:\p{Extended_Pictographic}[\u{FE00}-\u{FE0F}]?(?:‍\p{Extended_Pictographic}[\u{FE00}-\u{FE0F}]?)*)/u
+    /(?:\p{Extended_Pictographic}[\u{FE00}-\u{FE0F}]?(?:\u200d\p{Extended_Pictographic}[\u{FE00}-\u{FE0F}]?)*)/u
   );
   return m ? m[0] : undefined;
 }
 
-// -------------------- 递归转换 --------------------
-// 返回 { categories: Category[], sites: Site[] }，categories 带 parentId + children
+// -------------------- 过滤规则 --------------------
 const skipNames = new Set(["分隔线"]);
 
-/** 微信公众文章 URL（广告，过滤） */
+/** 广告分类整树剔除 */
+const skipCatNameRe = /特惠福利精选|流量、破解/;
+
+/** 微信公众文章 URL（广告） */
 function isWeixinArticle(url) {
   return typeof url === "string" && /mp\.weixin\.qq\.com/i.test(url);
 }
 
-/** 网盘 / 内容分享类链接（非正经网站，2026-08-22 用户明确过滤）
+/** 网盘 / 内容分享类链接（非正经网站）
  * 知乎问答、各大网盘分享盘（百度/夸克/城通/MediaFire/蓝奏云/阿里云盘/迅雷云盘/天翼云盘/123/华硕/Syncplicity/移动云盘） */
 const NON_STANDARD_URL_RE =
   /(?:zhihu\.com|pan\.baidu\.com|pan\.quark\.cn|ctfile\.com|mediafire\.com|lanzou[a-z]*\.(?:com|cn|net|org)|aliyundrive\.com|syncplicity\.com|ysepan\.com|pan\.xunlei\.com|cloud\.189\.cn|asuswebstorage\.com|123pan\.com)/i;
@@ -101,10 +95,21 @@ function isNonStandardUrl(url) {
   return typeof url === "string" && NON_STANDARD_URL_RE.test(url);
 }
 
-function buildNode(node, parentId, depth) {
+/** URL 归一化（去协议/尾部斜杠/小写）→ 去重键 */
+function normalizeUrl(u) {
+  return (u || "")
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+}
+
+// -------------------- 递归转换 --------------------
+const seenUrls = new Set(); // 全局去重（跨源）
+
+function buildNode(node, parentId, depth, stats) {
   const name = (node.name || "").trim();
-  // 广告分类整树剔除（2026-08-22 用户明确：特惠福利精选 全是广告）
-  if (skipNames.has(name) || name.includes("特惠福利精选")) return null;
+  if (skipNames.has(name) || skipCatNameRe.test(name)) return null;
+
   const category = {
     id: catId(node),
     parentId,
@@ -115,37 +120,46 @@ function buildNode(node, parentId, depth) {
     children: [],
   };
 
+  const pushSite = (item, extra = {}) => {
+    const n = normalizeUrl(item.url);
+    if (seenUrls.has(n)) {
+      stats.dupSkipped++;
+      return;
+    }
+    seenUrls.add(n);
+    category.sites.push({
+      id: siteId(category.id, item),
+      title: item.title,
+      url: item.url,
+      description: extra.description,
+      sort: category.sites.length,
+      createdAt: item.added || undefined,
+    });
+  };
+
   // items → sites
   for (const item of node.items || []) {
     const type = item.type || "normal";
     // note / 无 url 且非 expandable → 跳过
     if (!item.url && type !== "expandable") continue;
     // 微信公众文章 / 网盘分享 → 跳过
-    if (isWeixinArticle(item.url) || isNonStandardUrl(item.url)) continue;
+    if (isWeixinArticle(item.url) || isNonStandardUrl(item.url)) {
+      stats.filtered++;
+      continue;
+    }
 
     if (type === "expandable" && Array.isArray(item.links) && item.links.length > 0) {
       // 展开为多个 site，title 用「父标题 · 子标题」避免丢失上下文
       for (const link of item.links) {
         if (!link.url) continue;
-        if (isWeixinArticle(link.url) || isNonStandardUrl(link.url)) continue;
-        category.sites.push({
-          id: siteId(category.id, link),
-          title: `${item.title} · ${link.title}`.slice(0, 80),
-          url: link.url,
-          description: item.title,
-          sort: category.sites.length,
-          createdAt: item.added || undefined,
-        });
+        if (isWeixinArticle(link.url) || isNonStandardUrl(link.url)) {
+          stats.filtered++;
+          continue;
+        }
+        pushSite(link, { description: item.title });
       }
     } else {
-      category.sites.push({
-        id: siteId(category.id, item),
-        title: item.title,
-        url: item.url,
-        description: type === "mirror" ? "备用地址" : undefined,
-        sort: category.sites.length,
-        createdAt: item.added || undefined,
-      });
+      pushSite(item, { description: type === "mirror" ? "备用地址" : undefined });
     }
   }
 
@@ -153,19 +167,44 @@ function buildNode(node, parentId, depth) {
   for (const child of node.children || []) {
     const childName = (child.name || "").trim();
     if (skipNames.has(childName)) continue;
-    const built = buildNode(child, category.id, depth + 1);
+    const built = buildNode(child, category.id, depth + 1, stats);
     if (built) category.children.push(built);
   }
 
   return category;
 }
 
+// -------------------- 多源转换 --------------------
 const roots = [];
-for (const rc of rootCats) {
-  const name = (rc.name || "").trim();
-  if (skipNames.has(name)) continue;
-  const built = buildNode(rc, null, 0);
-  if (built) roots.push(built);
+const perSource = [];
+let topSort = 0;
+
+for (const file of SOURCES) {
+  const srcPath = path.join(DATA_DIR, file);
+  if (!fs.existsSync(srcPath)) {
+    console.error("数据源不存在:", srcPath);
+    process.exit(1);
+  }
+  const raw = JSON.parse(fs.readFileSync(srcPath, "utf8"));
+  const stats = { filtered: 0, dupSkipped: 0 };
+  const sourceRoots = [];
+
+  for (const rc of raw.categories || []) {
+    const name = (rc.name || "").trim();
+    if (skipNames.has(name)) continue;
+    const built = buildNode(rc, null, 0, stats);
+    if (built) {
+      built.sort = topSort++; // 顶级分类按源顺序全局编号
+      sourceRoots.push(built);
+    }
+  }
+
+  roots.push(...sourceRoots);
+  perSource.push({ site: raw.site, file, roots: sourceRoots, stats });
+  console.log(
+    `数据源 ${raw.site} (${raw.site_url}): 顶级分类 ${sourceRoots.length} 个 | ` +
+      `过滤 ${stats.filtered} / 去重跳过 ${stats.dupSkipped}`
+  );
 }
 
 // 统计
@@ -218,8 +257,14 @@ const CREATE_TABLES = [
     _deleted INTEGER NOT NULL DEFAULT 0, deleted_at TEXT, updated_at TEXT, created_at TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS nav_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS site_dead_reports (
+    site_id TEXT NOT NULL, anon_id TEXT NOT NULL, created_at INTEGER NOT NULL,
+    UNIQUE(site_id, anon_id)
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_sites_category ON sites(category_id)`,
   `CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_site_dead_reports_site ON site_dead_reports(site_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_site_dead_reports_anon ON site_dead_reports(anon_id)`,
 ];
 for (const sql of CREATE_TABLES) {
   await db.execute(sql);
