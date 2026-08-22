@@ -5,12 +5,12 @@
  */
 
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE } from "@/lib/server/auth";
+import { SESSION_COOKIE, siteOrigin } from "@/lib/server/auth";
 
 export const runtime = "nodejs";
 
-export async function POST(request: Request) {
-  const res = NextResponse.redirect(new URL("/admin", request.url));
+export async function POST() {
+  const res = NextResponse.redirect(new URL("/admin", siteOrigin()));
   res.cookies.set(SESSION_COOKIE, "", { maxAge: 0, path: "/" });
   return res;
 }
