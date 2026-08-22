@@ -25,15 +25,15 @@
   --accent-600: #e6bf00;
 
   /* 语义表面 */
-  --background: #fafafa;           /* 页面主背景 */
+  --background: #fafafa; /* 页面主背景 */
   --background-secondary: #ffffff; /* 卡片 / 容器 */
-  --background-elevated: #ffffff;  /* 弹出层 */
-  --foreground: #171717;           /* 主文字 */
+  --background-elevated: #ffffff; /* 弹出层 */
+  --foreground: #171717; /* 主文字 */
   --foreground-secondary: #3f3f46; /* 普通文字 */
-  --muted: #f4f4f5;                /* hover / chip 灰底 */
-  --muted-foreground: #a1a1aa;     /* meta / 计数 */
-  --border: #e5e5e5;               /* 1px 边框 */
-  --border-strong: #d4d4d8;        /* hover 边框 */
+  --muted: #f4f4f5; /* hover / chip 灰底 */
+  --muted-foreground: #a1a1aa; /* meta / 计数 */
+  --border: #e5e5e5; /* 1px 边框 */
+  --border-strong: #d4d4d8; /* hover 边框 */
   --input-border: #e5e5e5;
 
   /* 功能色 */
@@ -57,6 +57,39 @@
 
   --container-max: 1200px;
   --container-padding: 1.25rem;
+}
+
+/* ============================================================
+   深色主题（2026-08-22）
+   data-theme="dark" 时覆盖语义表面变量；neutral 色阶保持深色系
+   （--neutral-900 大量用于「深底白字」按钮，不能反转）
+   ============================================================ */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --background: #0e0e10;
+  --background-secondary: #17171a;
+  --background-elevated: #1f1f24;
+  --foreground: #ededee;
+  --foreground-secondary: #c9c9ce;
+  --muted: #1f1f24;
+  --muted-foreground: #8b8b92;
+  --border: #26262b;
+  --border-strong: #3b3b42;
+  --input-border: #3b3b42;
+
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.5);
+  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.6);
+  --shadow-lg: 0 8px 24px -4px rgb(0 0 0 / 0.7);
+}
+
+[data-theme="dark"] :focus-visible {
+  outline-color: var(--accent-500);
+}
+
+[data-theme="dark"] ::selection {
+  color: #0e0e10;
 }
 
 @theme inline {
@@ -91,7 +124,8 @@
   --shadow-md: var(--shadow-md);
   --shadow-lg: var(--shadow-lg);
 
-  --font-sans: var(--font-plus-jakarta), "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  --font-sans:
+    var(--font-plus-jakarta), "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
 }
 
 @layer base {
@@ -101,8 +135,9 @@
 
   body {
     @apply min-h-screen bg-[var(--background)] text-[var(--foreground)] antialiased;
-    font-family: var(--font-plus-jakarta), "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
-    background-color: #fafafa;
+    font-family:
+      var(--font-plus-jakarta), "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    background-color: var(--background);
     font-feature-settings: "cv11", "ss01";
   }
 
@@ -110,7 +145,8 @@
   h2,
   h3,
   h4 {
-    font-family: var(--font-plus-jakarta), "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    font-family:
+      var(--font-plus-jakarta), "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
     letter-spacing: -0.02em;
   }
 
