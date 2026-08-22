@@ -88,9 +88,10 @@ function isWeixinArticle(url) {
 }
 
 /** 网盘 / 内容分享类链接（非正经网站）
- * 知乎问答、各大网盘分享盘（百度/夸克/城通/MediaFire/蓝奏云/阿里云盘/迅雷云盘/天翼云盘/123/华硕/Syncplicity/移动云盘） */
+ * 知乎问答、各大网盘分享盘（百度/夸克/城通/MediaFire/蓝奏云/阿里云盘/迅雷云盘/天翼云盘/123/华硕/Syncplicity/移动云盘）、
+ * 飞书云文档/知识库教程（feishu.cn，2026-08-22 用户明确过滤） */
 const NON_STANDARD_URL_RE =
-  /(?:zhihu\.com|pan\.baidu\.com|pan\.quark\.cn|ctfile\.com|mediafire\.com|lanzou[a-z]*\.(?:com|cn|net|org)|aliyundrive\.com|syncplicity\.com|ysepan\.com|pan\.xunlei\.com|cloud\.189\.cn|asuswebstorage\.com|123pan\.com)/i;
+  /(?:zhihu\.com|pan\.baidu\.com|pan\.quark\.cn|ctfile\.com|mediafire\.com|lanzou[a-z]*\.(?:com|cn|net|org)|aliyundrive\.com|syncplicity\.com|ysepan\.com|pan\.xunlei\.com|cloud\.189\.cn|asuswebstorage\.com|123pan\.com|feishu\.cn)/i;
 function isNonStandardUrl(url) {
   return typeof url === "string" && NON_STANDARD_URL_RE.test(url);
 }
