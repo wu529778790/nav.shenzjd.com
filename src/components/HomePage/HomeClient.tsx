@@ -97,7 +97,7 @@ function Breadcrumb({
   if (path.length === 0) return null;
   return (
     <nav aria-label="面包屑" className="flex min-w-0 items-center gap-1.5 text-[13px]">
-      <span className="text-[var(--muted-foreground)]">储物间</span>
+      <span className="text-[var(--muted-foreground)]">神族九帝的收藏夹</span>
       {path.map((c, i) => {
         const isLast = i === path.length - 1;
         const isTop = i === 0;
