@@ -20,6 +20,24 @@ export function adminLogin(): string {
   return process.env.ADMIN_GITHUB_LOGIN?.trim() || "wu529778790";
 }
 
+/** GitHub OAuth client_id（兼容 NEXT_PUBLIC_ 前缀，服务器可能两种命名） */
+export function githubClientId(): string {
+  return (
+    process.env.GITHUB_CLIENT_ID?.trim() || process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID?.trim() || ""
+  );
+}
+
+/** GitHub OAuth client_secret */
+export function githubClientSecret(): string {
+  return process.env.GITHUB_CLIENT_SECRET?.trim() || "";
+}
+
+/** 签名密钥是否已配置（≥32 字符） */
+export function hasAuthSecret(): boolean {
+  const s = process.env.AUTH_SECRET?.trim();
+  return Boolean(s && s.length >= 32);
+}
+
 function secret(): string {
   const s = process.env.AUTH_SECRET?.trim();
   if (!s || s.length < 32) {
