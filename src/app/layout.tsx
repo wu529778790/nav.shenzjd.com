@@ -14,27 +14,27 @@ export const plusJakarta = localFont({
 
 export const metadata: Metadata = {
   title: {
-    default: "NavHub - 个人导航网站",
-    template: "%s | NavHub",
+    default: "神族九帝的收藏夹",
+    template: "%s | 神族九帝的收藏夹",
   },
   description:
-    "NavHub 是一个现代化的导航书签聚合站，聚合影视、阅读、工具、AI、资源搜索等 4000+ 优质链接，支持全文搜索与子主题筛选。",
-  keywords: ["导航", "书签", "收藏夹", "资源", "NavHub", "bookmark", "navigation"],
-  authors: [{ name: "NavHub" }],
-  creator: "NavHub",
+    "神族九帝的收藏夹：个人导航书签聚合站，聚合影视、阅读、工具、AI、资源搜索等优质链接，支持全文搜索。",
+  keywords: ["导航", "书签", "收藏夹", "资源", "神族九帝", "bookmark", "navigation"],
+  authors: [{ name: "神族九帝" }],
+  creator: "神族九帝",
   metadataBase: new URL("https://navhub.shenzjd.com"),
   openGraph: {
     type: "website",
     locale: "zh_CN",
     url: "https://navhub.shenzjd.com",
-    siteName: "NavHub",
-    title: "NavHub - 个人导航网站",
-    description: "聚合 4000+ 优质链接的导航站：影视、阅读、工具、AI、资源搜索。",
+    siteName: "神族九帝的收藏夹",
+    title: "神族九帝的收藏夹",
+    description: "聚合优质链接的个人导航站：影视、阅读、工具、AI、资源搜索。",
   },
   twitter: {
     card: "summary_large_image",
-    title: "NavHub - 个人导航网站",
-    description: "聚合 4000+ 优质链接的导航站：影视、阅读、工具、AI、资源搜索。",
+    title: "神族九帝的收藏夹",
+    description: "聚合优质链接的个人导航站：影视、阅读、工具、AI、资源搜索。",
   },
   robots: {
     index: true,
