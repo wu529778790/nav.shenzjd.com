@@ -73,10 +73,6 @@ interface SidebarProps {
   categories: Category[];
   activeCategoryId: string | null;
   onCategoryChange: (categoryId: string) => void;
-  mobileOpen?: boolean;
-  onMobileClose?: () => void;
-  /** 移动端全屏展示模式（不通过抽屉触发，占满首屏直接显示 tree），2026-08-22 用户拍板 */
-  mobileAlwaysOpen?: boolean;
 }
 
 /** 计算节点下挂的站点总数（含子孙） */
@@ -246,14 +242,7 @@ function SiteRow({
 
 /* ============ 主组件 ============ */
 
-export function Sidebar({
-  categories,
-  activeCategoryId,
-  onCategoryChange,
-  mobileOpen,
-  onMobileClose,
-  mobileAlwaysOpen,
-}: SidebarProps) {
+export function Sidebar({ categories, activeCategoryId, onCategoryChange }: SidebarProps) {
   // 展开状态：默认全部收起（仅显示顶级分类名称，点击再展开）
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
@@ -295,16 +284,6 @@ export function Sidebar({
     });
   }, [activeCategoryId, activeAncestors]);
 
-  // ESC 关闭移动端抽屉
-  useEffect(() => {
-    if (!mobileOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onMobileClose?.();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [mobileOpen, onMobileClose]);
-
   if (categories.length === 0) return null;
 
   const toggle = (id: string) => {
@@ -339,65 +318,18 @@ export function Sidebar({
 
   return (
     <>
-      {/* 桌面端：sticky 左列 —— 不展示站点链接（右侧主区已展示） */}
-      <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-96 flex-shrink-0 border-r border-[var(--border)] bg-[var(--background-secondary)] md:block">
+      {/* 左列：tree 永远可见 —— 桌面 w-96（384px）/ 移动 w-[40%] 最大 180px（2026-08-22 用户拍板） */}
+      <aside className="sticky top-16 z-30 h-[calc(100vh-4rem)] w-[40%] max-w-[180px] flex-shrink-0 overflow-y-auto border-r border-[var(--border)] bg-[var(--background-secondary)] md:max-w-none md:w-96">
         <div className="relative flex h-full flex-col">
-          <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center justify-between px-3 py-3 md:px-4">
             <h2 className="text-[13px] font-semibold text-[var(--foreground)]">全部分类</h2>
             <span className="text-xs tabular-nums text-[var(--muted-foreground)]">
               {categories.length}
             </span>
           </div>
-          <div className="min-h-0 flex-1 overflow-hidden px-2">{renderNav(false)}</div>
+          <div className="min-h-0 flex-1 overflow-hidden px-1 md:px-2">{renderNav(false)}</div>
         </div>
       </aside>
-
-      {/* 移动端：全屏 tree 模式（mobileAlwaysOpen，首屏直接展示不需打开抽屉，2026-08-22 用户拍板） */}
-      {mobileAlwaysOpen && (
-        <aside className="fixed inset-x-0 top-16 bottom-0 z-40 md:hidden border-t border-[var(--border)] bg-[var(--background-secondary)]">
-          <div className="h-full overflow-hidden px-2 py-2">{renderNav(false)}</div>
-        </aside>
-      )}
-
-      {/* 移动端：抽屉式 —— 展示站点链接（无右侧主区，链接需从树里直达） */}
-      {!mobileAlwaysOpen && mobileOpen && (
-        <div className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={onMobileClose}
-            aria-label="关闭分类导航"
-          />
-          <aside className="absolute inset-y-0 left-0 w-72 max-w-[85vw] border-r border-[var(--border)] bg-[var(--background-secondary)] shadow-xl">
-            <div className="flex h-full flex-col">
-              <div className="flex items-center justify-between px-4 py-3">
-                <h2 className="text-sm font-semibold">全部分类</h2>
-                <button
-                  type="button"
-                  onClick={onMobileClose}
-                  className="rounded-[var(--radius-sm)] p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-                  aria-label="关闭"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M6 6L18 18M18 6L6 18"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </button>
-              </div>
-              <div className="min-h-0 flex-1 overflow-hidden px-2">{renderNav(true)}</div>
-            </div>
-          </aside>
-        </div>
-      )}
     </>
   );
 }
