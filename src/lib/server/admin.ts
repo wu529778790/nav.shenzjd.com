@@ -18,14 +18,14 @@ export async function siteExists(siteId: string): Promise<boolean> {
   return rs.rows.length > 0;
 }
 
-/** 删除站点（事务：连带清除全部失效报告） */
+/** 软删除站点（进垃圾箱）：打 _deleted 墓碑标记，首页自动隐藏 */
 export async function deleteSite(siteId: string): Promise<void> {
   await ensureTables();
   const db = getClient();
-  await db.batch([
-    { sql: "DELETE FROM site_dead_reports WHERE site_id = ?", args: [siteId] },
-    { sql: "DELETE FROM sites WHERE id = ?", args: [siteId] },
-  ]);
+  await db.execute({
+    sql: "UPDATE sites SET _deleted = 1, deleted_at = ? WHERE id = ?",
+    args: [String(Date.now()), siteId],
+  });
 }
 
 /** 只清除该站点的失效报告（站点保留） */
@@ -125,6 +125,7 @@ export async function getSitesPage(params: SitePageParams): Promise<SitePage> {
 
   const where: string[] = [];
   const args: (string | number)[] = [];
+  where.push("s._deleted = 0"); // 回收站外的正常站点
   if (q && q.trim()) {
     const like = `%${q.trim()}%`;
     where.push("(s.title LIKE ? OR s.url LIKE ? OR s.description LIKE ?)");
@@ -215,8 +216,70 @@ export async function updateSite(siteId: string, fields: SiteUpdateFields): Prom
   });
 }
 
-/** 批量删除站点（事务：连带清除全部失效报告） */
+/** 批量软删除站点（进垃圾箱） */
 export async function deleteSites(siteIds: string[]): Promise<void> {
+  if (siteIds.length === 0) return;
+  await ensureTables();
+  const db = getClient();
+  const placeholders = siteIds.map(() => "?").join(",");
+  await db.execute({
+    sql: `UPDATE sites SET _deleted = 1, deleted_at = ? WHERE id IN (${placeholders})`,
+    args: [String(Date.now()), ...siteIds],
+  });
+}
+
+/* ============ 垃圾箱（回收站） ============ */
+
+/** 垃圾箱条目 */
+export interface TrashSite {
+  id: string;
+  title: string;
+  url: string;
+  favicon?: string;
+  description?: string;
+  categoryId?: string;
+  categoryName?: string;
+  deletedAt: number | null;
+}
+
+/** 垃圾箱列表（软删除的站点），按删除时间倒序 */
+export async function getTrashSites(): Promise<TrashSite[]> {
+  await ensureTables();
+  const db = getClient();
+  const rs = await db.execute(`
+    SELECT s.id, s.title, s.url, s.favicon, s.description, s.category_id, s.deleted_at,
+           c.name AS category_name
+    FROM sites s
+    LEFT JOIN categories c ON c.id = s.category_id
+    WHERE s._deleted = 1
+    ORDER BY s.deleted_at DESC, s.title ASC
+  `);
+  return rs.rows.map((r) => ({
+    id: String(r.id),
+    title: String(r.title),
+    url: String(r.url),
+    favicon: r.favicon != null ? String(r.favicon) : undefined,
+    description: r.description != null ? String(r.description) : undefined,
+    categoryId: r.category_id != null ? String(r.category_id) : undefined,
+    categoryName: r.category_name != null ? String(r.category_name) : undefined,
+    deletedAt: r.deleted_at != null ? Number(r.deleted_at) : null,
+  }));
+}
+
+/** 恢复站点（单条/批量）：清除墓碑标记 */
+export async function restoreSites(siteIds: string[]): Promise<void> {
+  if (siteIds.length === 0) return;
+  await ensureTables();
+  const db = getClient();
+  const placeholders = siteIds.map(() => "?").join(",");
+  await db.execute({
+    sql: `UPDATE sites SET _deleted = 0, deleted_at = NULL WHERE id IN (${placeholders})`,
+    args: siteIds,
+  });
+}
+
+/** 永久删除站点（单条/批量，事务：连带清除失效报告） */
+export async function purgeSites(siteIds: string[]): Promise<void> {
   if (siteIds.length === 0) return;
   await ensureTables();
   const db = getClient();
