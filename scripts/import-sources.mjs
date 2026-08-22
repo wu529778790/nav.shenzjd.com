@@ -193,10 +193,26 @@ function buildNode(node, parentId, depth, stats) {
   return category;
 }
 
-// -------------------- 多源转换 --------------------
+// -------------------- 多源转换（含顶级分类合并） --------------------
+// 2026-08-22 用户拍板（方案 A）：luckman 主题与 axutongxue 重复的顶级分类
+// 并入 axutongxue 对应顶级（其子分类作为目标顶级的同级子分类挂入）；
+// 摸鱼 D（游戏）、功能 X（工具）保留独立顶级。
+const MERGE_TOP = [
+  { from: /^播放/, to: /^01/ }, // 影视动漫 → 01 影视
+  { from: /^阅读/, to: /^02/ }, // 书漫 → 02 电子书漫画音乐听书
+  { from: /^倾听/, to: /^02/ }, // 音乐听书 → 02
+  { from: /^搜索/, to: /^03/ }, // 磁力网盘搜索 → 03 BT磁力
+  { from: /^AI站/, to: /^04/ }, // AI → 04 热门AI
+  { from: /^镜像/, to: /^02/ }, // 电子书镜像 → 02
+  { from: /^提升/, to: /^11/ }, // 学术考研 → 11 学习网站
+  { from: /^素材/, to: /^09/ }, // 壁纸模板 → 09 常用网站
+];
+
 const roots = [];
 const perSource = [];
 let topSort = 0;
+const topByName = new Map(); // 顶级名 → node（axutongxue 先处理，供后续源合并查找）
+
 for (const file of SOURCES) {
   const srcPath = path.join(DATA_DIR, file);
   if (!fs.existsSync(srcPath)) {
@@ -204,24 +220,48 @@ for (const file of SOURCES) {
     process.exit(1);
   }
   const raw = JSON.parse(fs.readFileSync(srcPath, "utf8"));
-  const stats = { filtered: 0, dupSkipped: 0 };
+  const stats = { filtered: 0, dupSkipped: 0, merged: 0 };
   const sourceRoots = [];
 
   for (const rc of raw.categories || []) {
     const name = (rc.name || "").trim();
     if (skipNames.has(name)) continue;
     const built = buildNode(rc, null, 0, stats);
-    if (built) {
-      built.sort = topSort++; // 顶级分类按源顺序全局编号
-      sourceRoots.push(built);
+    if (!built) continue;
+
+    // 尝试合并到 axutongxue 已有顶级
+    const mergeRule = MERGE_TOP.find((m) => m.from.test(name));
+    if (mergeRule) {
+      const targetNode = [...topByName.entries()].find(([k]) => mergeRule.to.test(k))?.[1];
+      if (targetNode) {
+        // 子分类追加到目标顶级（sort 偏移 + parentId 重挂到目标顶级，否则写库后成孤儿）
+        const baseSort = targetNode.children.length;
+        built.children.forEach((child, i) => {
+          child.sort = baseSort + i;
+          child.parentId = targetNode.id;
+        });
+        targetNode.children.push(...built.children);
+        // 顶级自身挂的站点也并入
+        if (built.sites.length > 0) targetNode.sites.push(...built.sites);
+        stats.merged++;
+        continue; // 不独立成顶级
+      }
     }
+
+    built.sort = topSort++; // 顶级分类按源顺序全局编号
+    sourceRoots.push(built);
   }
 
   roots.push(...sourceRoots);
   perSource.push({ site: raw.site, file, roots: sourceRoots, stats });
+  // 记录 axutongxue 的顶级（供 luckman 合并查找目标）
+  if (file.includes("axutongxue")) {
+    for (const r of sourceRoots) topByName.set(r.name, r);
+  }
   console.log(
     `数据源 ${raw.site} (${raw.site_url}): 顶级分类 ${sourceRoots.length} 个 | ` +
-      `过滤 ${stats.filtered} / 去重跳过 ${stats.dupSkipped}`
+      `过滤 ${stats.filtered} / 去重跳过 ${stats.dupSkipped}` +
+      (stats.merged > 0 ? ` / 合并 ${stats.merged}` : "")
   );
 }
 
