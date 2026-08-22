@@ -17,6 +17,7 @@ import {
   SESSION_COOKIE,
   githubClientId,
   githubClientSecret,
+  siteOrigin,
 } from "@/lib/server/auth";
 
 export const runtime = "nodejs";
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
 
   // 无论成败都清 state cookie（一次性）
   const fail = (reason: string) => {
-    const res = NextResponse.redirect(new URL(`/admin?error=${reason}`, url));
+    const res = NextResponse.redirect(new URL(`/admin?error=${reason}`, siteOrigin()));
     clearState(res);
     return res;
   };
@@ -96,7 +97,7 @@ export async function GET(request: Request) {
     return fail("forbidden");
   }
 
-  const res = NextResponse.redirect(new URL("/admin", url));
+  const res = NextResponse.redirect(new URL("/admin", siteOrigin()));
   res.cookies.set(SESSION_COOKIE, createSessionToken(login), {
     httpOnly: true,
     sameSite: "lax",
