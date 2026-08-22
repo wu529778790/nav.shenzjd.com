@@ -38,6 +38,17 @@ export function hasAuthSecret(): boolean {
   return Boolean(s && s.length >= 32);
 }
 
+/**
+ * 站点外部地址（用于构造重定向绝对 URL）。
+ *
+ * 不能依赖 request.url 的 host：容器内 HOSTNAME=0.0.0.0，反代转发时
+ * request 的 host 是内部地址（如 0.0.0.0:3000），会导致登录后跳错域名。
+ * 默认写死本站域名，换域名时用 APP_URL 环境变量覆盖。
+ */
+export function siteOrigin(): string {
+  return process.env.APP_URL?.trim() || "https://navhub.shenzjd.com";
+}
+
 function secret(): string {
   const s = process.env.AUTH_SECRET?.trim();
   if (!s || s.length < 32) {
