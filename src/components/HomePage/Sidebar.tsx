@@ -340,7 +340,7 @@ export function Sidebar({
   return (
     <>
       {/* 桌面端：sticky 左列 —— 不展示站点链接（右侧主区已展示） */}
-      <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-80 flex-shrink-0 border-r border-[var(--border)] bg-[var(--background-secondary)] md:block">
+      <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-96 flex-shrink-0 border-r border-[var(--border)] bg-[var(--background-secondary)] md:block">
         <div className="relative flex h-full flex-col">
           <div className="flex items-center justify-between px-4 py-3">
             <h2 className="text-[13px] font-semibold text-[var(--foreground)]">全部分类</h2>
