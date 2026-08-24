@@ -11,9 +11,21 @@
  */
 
 import { createClient, type Client } from "@libsql/client";
+import { cacheGetOrLoad, cacheInvalidate } from "@/lib/server/cache";
 import type { NavData, Category, Site } from "@/types";
 
 let client: Client | null = null;
+
+/** 导航数据缓存键 */
+const NAV_CACHE_KEY = "nav:data";
+
+/** 导航数据缓存 TTL（秒，默认 300 = 5 分钟；导入脚本独立进程改库靠它兜底） */
+const NAV_CACHE_TTL_MS = (Number(process.env.NAV_CACHE_TTL_SECONDS) || 300) * 1000;
+
+/** 后台/写入方改库后主动失效导航缓存（首页下一次访问立即拿到新数据） */
+export function invalidateNavCache(): void {
+  cacheInvalidate(NAV_CACHE_KEY);
+}
 
 /** 导出给其它服务端模块（如 reports.ts）复用同一 client */
 export function getClient(): Client {
@@ -111,7 +123,10 @@ function categoryInsert(cat: Category): { sql: string; args: (string | number | 
 }
 
 /** 单条 Site 的 INSERT 语句参数 */
-function siteInsert(categoryId: string, site: Site): { sql: string; args: (string | number | null)[] } {
+function siteInsert(
+  categoryId: string,
+  site: Site
+): { sql: string; args: (string | number | null)[] } {
   return {
     sql: `INSERT INTO sites (id, category_id, title, url, favicon, description, sort,
                             _deleted, deleted_at, updated_at, created_at)
@@ -133,7 +148,10 @@ function siteInsert(categoryId: string, site: Site): { sql: string; args: (strin
 }
 
 /** 元数据 UPSERT 语句参数 */
-function metaUpsert(key: string, value: string | number): { sql: string; args: (string | number)[] } {
+function metaUpsert(
+  key: string,
+  value: string | number
+): { sql: string; args: (string | number)[] } {
   return {
     sql: `INSERT INTO nav_meta (key, value) VALUES (?, ?)
           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
@@ -160,8 +178,17 @@ function flattenCategories(categories: Category[]): Category[] {
 /**
  * 读取整份导航数据（树形）。
  * 空库（无任何分类且无 meta）返回 null。
+ *
+ * 走进程内 TTL 缓存（见 src/lib/server/cache.ts）：
+ * - 命中缓存 → 零数据库读（导航数据静态、低频更新，读取量最大的路径）；
+ * - 过期后单飞重建（并发只触发一次真实读库，防击穿）；
+ * - writeNavData / 后台管理写库后主动失效，改动立即可见。
  */
 export async function readNavData(): Promise<NavData | null> {
+  return cacheGetOrLoad(NAV_CACHE_KEY, readNavDataUncached, NAV_CACHE_TTL_MS);
+}
+
+async function readNavDataUncached(): Promise<NavData | null> {
   await ensureTables();
   const db = getClient();
 
@@ -178,8 +205,7 @@ export async function readNavData(): Promise<NavData | null> {
 
   const categories: Category[] = catsRs.rows.map((r) => ({
     id: String(r.id),
-    parentId:
-      r.parent_id != null && r.parent_id !== "" ? String(r.parent_id) : undefined,
+    parentId: r.parent_id != null && r.parent_id !== "" ? String(r.parent_id) : undefined,
     name: String(r.name),
     icon: r.icon != null ? String(r.icon) : undefined,
     sort: Number(r.sort ?? 0),
@@ -248,6 +274,7 @@ export async function readNavData(): Promise<NavData | null> {
 /**
  * 整份写入（事务内全量快照）。
  * 接受树形 NavData，内部递归展平为带 parent_id 的行。
+ * 写成功后主动失效导航缓存，保证首页下一次访问读到新数据。
  */
 export async function writeNavData(data: NavData): Promise<void> {
   await ensureTables();
@@ -273,4 +300,5 @@ export async function writeNavData(data: NavData): Promise<void> {
   }
 
   await db.batch(statements);
+  invalidateNavCache();
 }
