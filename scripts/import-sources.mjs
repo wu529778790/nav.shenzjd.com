@@ -96,12 +96,27 @@ function isNonStandardUrl(url) {
   return typeof url === "string" && NON_STANDARD_URL_RE.test(url);
 }
 
-/** URL 归一化（去协议/尾部斜杠/小写）→ 去重键 */
+/** URL 归一化（去协议/尾部斜杠/小写/默认端口/www、query 排序）→ 去重键
+ * 与 navdata/clean_navdata.py 的 url_key 保持一致（2026-08-24） */
 function normalizeUrl(u) {
-  return (u || "")
-    .replace(/^https?:\/\//i, "")
-    .replace(/\/+$/, "")
-    .toLowerCase();
+  if (!u) return "";
+  const s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) return s.replace(/\/+$/, "").toLowerCase();
+  try {
+    const url = new URL(s);
+    let host = url.hostname || "";
+    if (host.startsWith("www.")) host = host.slice(4);
+    const port = url.port ? Number(url.port) : 0;
+    const netloc = port && port !== 80 && port !== 443 ? `${host}:${port}` : host;
+    const params = [...url.searchParams.entries()].sort((a, b) =>
+      a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0
+    );
+    const query = params.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    return `${url.protocol}//${netloc}${path}${query ? `?${query}` : ""}`;
+  } catch {
+    return s.replace(/^https?:\/\//i, "").replace(/\/+$/, "").toLowerCase();
+  }
 }
 
 /** 移除 URL 中携带 luckman/axutongxue 字样的追踪参数（utm_source 等），
@@ -179,7 +194,8 @@ function buildNode(node, parentId, depth, stats) {
         pushSite(link, { description: item.title });
       }
     } else {
-      pushSite(item, { description: type === "mirror" ? "备用地址" : undefined });
+      // mirror（备用地址）标题已在 clean_navdata.py 改为「主站名（备用）」，description 无需再标注
+      pushSite(item, { description: type === "mirror" ? item.title : undefined });
     }
   }
 
@@ -346,7 +362,8 @@ for (const sql of CREATE_TABLES) {
 }
 
 // 递归展平 + 生成 INSERT 语句
-const stmts = ["DELETE FROM sites", "DELETE FROM categories"];
+// 注意：只重建正常站点（_deleted=0），保留垃圾箱记录（_deleted=1，用户后台手动删除的）
+const stmts = ["DELETE FROM sites WHERE _deleted = 0", "DELETE FROM categories"];
 const walk = (cats) => {
   for (const c of cats) {
     stmts.push({
