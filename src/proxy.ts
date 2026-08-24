@@ -16,6 +16,17 @@ export function proxy(request: NextRequest) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 
+  // HTML 页面缓存（2026-08-24 P0-2）：数据低频变更 + 报失效已客户端化 → 允许 CDN 缓存 6h。
+  // 首页走 Next ISR 产物缓存（s-maxage 由 Next 输出）；分类页为动态路由（build 期无 Turso，
+  // 无法 generateStaticParams，Next 不产出 ISR 缓存），由这里统一补 CDN 缓存头，让 Cloudflare 边缘直出。
+  // s-maxage 只作用于共享缓存（CDN），浏览器不缓存（无 max-age），刷新始终看到最新报告数。
+  if (request.nextUrl.pathname === "/" || request.nextUrl.pathname.startsWith("/c/")) {
+    response.headers.set(
+      "Cache-Control",
+      "public, s-maxage=21600, stale-while-revalidate=86400"
+    );
+  }
+
   if (request.nextUrl.protocol === "https:") {
     response.headers.set(
       "Strict-Transport-Security",
