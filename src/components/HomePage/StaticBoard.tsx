@@ -1,16 +1,20 @@
 "use client";
 
 /**
- * 静态站点板 + 失效标注（2026-08-22 M2 手动模式）
+ * 静态站点板 + 失效标注（2026-08-22 M2 手动模式；2026-08-24 报失效状态客户端化）
  *
  * 站点卡片网格：favicon + 标题 + 描述 + 标签 chip（黄=官方直解 / 灰=备用链接）。
  * 卡片右上角为「报失效」⚑ 按钮（匿名，HttpOnly anon_id cookie）：
  * - 有报告（count ≥ 1）的站点：卡片置灰 + 底部「已失效 · N」chip，⚑ 常显
  * - 点击：乐观更新 → POST/DELETE → 成功以服务端结果覆盖 / 失败回滚 + toast
- * 数据由 SSR 注入（initialReportCounts / initialReportedSiteIds），首屏无闪烁。
+ *
+ * 数据来源（2026-08-24 P0-2 静态化）：
+ * - 报告数 map 由 SSR 注入（全局聚合，可缓存）；
+ * - 当前用户已报的站点 id 不再 SSR 注入，挂载后从 /api/sites/dead-report-state 拉取
+ *   （个性化数据客户端化 → 页面 HTML 不再依赖 cookie，可被 ISR/CDN 缓存）。
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { FaviconImage } from "@/components/FaviconImage";
 import type { Site } from "@/types";
@@ -18,7 +22,6 @@ import type { Site } from "@/types";
 interface StaticBoardProps {
   sites: Site[];
   reportCounts?: Record<string, number>;
-  reportedSiteIds?: string[];
 }
 
 /** 本地覆盖状态：优先于 SSR 注入值（乐观更新用） */
@@ -149,21 +152,34 @@ function StaticSiteCard({
 }
 
 /** 站点网格：4 列自适应 + 失效标注 */
-export function StaticBoard({
-  sites,
-  reportCounts = {},
-  reportedSiteIds = [],
-}: StaticBoardProps) {
+export function StaticBoard({ sites, reportCounts = {} }: StaticBoardProps) {
   const [overrides, setOverrides] = useState<Map<string, ReportOverride>>(new Map());
   const [toast, setToast] = useState<string | null>(null);
+  // 当前用户已报失效的站点（客户端拉取；SSR 不再注入）
+  const [reportedIds, setReportedIds] = useState<Set<string>>(new Set());
 
-  const reportedSet = new Set(reportedSiteIds);
+  // 挂载后拉取当前用户已报失效的站点（个性化数据客户端化，页面 HTML 可 ISR 缓存）
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/sites/dead-report-state")
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { reportedSiteIds: string[] };
+        if (!cancelled) setReportedIds(new Set(data.reportedSiteIds));
+      })
+      .catch(() => {
+        // 拉取失败降级：视为未报（不阻塞浏览）
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const stateFor = (site: Site): ReportOverride => {
     const o = overrides.get(site.id);
     if (o) return o;
     return {
-      reported: reportedSet.has(site.id),
+      reported: reportedIds.has(site.id),
       count: reportCounts[site.id] ?? 0,
     };
   };
