@@ -18,9 +18,9 @@ export interface ReportState {
   count: number;
 }
 
-/** 全站报告数缓存：短 TTL 兜底（30s），报失效/后台清除时主动失效立即可见 */
+/** 全站报告数缓存：TTL 兜底（5 分钟），报失效/取消/后台清除都会主动失效，TTL 仅防抖 */
 const REPORT_COUNTS_KEY = "reports:counts";
-const REPORT_COUNTS_TTL_MS = 30 * 1000;
+const REPORT_COUNTS_TTL_MS = 5 * 60 * 1000;
 
 /** 报告数变更方（addReport / removeReport / 后台清除）写库后主动失效 */
 export function invalidateReportCountsCache(): void {
@@ -29,7 +29,7 @@ export function invalidateReportCountsCache(): void {
 
 /**
  * 所有站点的报告数 → Map<siteId, count>
- * 走进程内短 TTL 缓存（聚合查询是全表 GROUP BY，首页每次访问都会打）。
+ * 走进程内 TTL 缓存（聚合查询是全表 GROUP BY，首页每次访问都会打）。
  */
 export async function getReportCounts(): Promise<Map<string, number>> {
   return cacheGetOrLoad(REPORT_COUNTS_KEY, getReportCountsUncached, REPORT_COUNTS_TTL_MS);
