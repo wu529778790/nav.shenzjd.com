@@ -12,8 +12,10 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // HTML / 页面路由：数据库模式（2026-08-21 起）数据实时读 Turso，
-        // 页面为 force-dynamic 动态渲染，HTML 不缓存，保证每次访问数据最新。
+        // HTML / 页面路由：页面为 force-dynamic 动态渲染，HTML 不缓存，
+        // 保证 per-anon 失效标注等个性化内容最新。数据库读量已由数据层
+        // 进程内缓存承接（turso.ts readNavData 默认 TTL 5 分钟 + 写后失效），
+        // 命中缓存时不再直读 Turso。
         // API 路由（/api/*）同样不缓存（路由 handler 自己通过 Cache-Control: no-store 控制）。
         source: "/((?!_next/static|_next/image|favicon.ico|sw\\.js|api/).*)",
         headers: [
