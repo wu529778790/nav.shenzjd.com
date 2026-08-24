@@ -193,13 +193,12 @@ export default function HomeClient({
   initialSites = [],
   initialActiveCategoryId = null,
   initialReportCounts = {},
-  initialReportedSiteIds = [],
 }: {
   initialSites?: Category[];
   /** URL 驱动的当前分类（SEO，2026-08-24）：/c/[id] 传入该 id，首页为空 → 默认第一个顶级分类 */
   initialActiveCategoryId?: string | null;
+  /** 全站失效报告数（全局聚合，SSR 注入；用户已报状态由 StaticBoard 客户端拉取） */
   initialReportCounts?: Record<string, number>;
-  initialReportedSiteIds?: string[];
 }) {
   const categories = initialSites;
 
@@ -413,7 +412,6 @@ export default function HomeClient({
                       <StaticBoard
                         sites={activeCategory.sites}
                         reportCounts={initialReportCounts}
-                        reportedSiteIds={initialReportedSiteIds}
                       />
                     </section>
                   ) : (
