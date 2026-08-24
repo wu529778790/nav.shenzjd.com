@@ -284,6 +284,50 @@ export async function restoreSites(siteIds: string[]): Promise<void> {
   invalidateNavCache();
 }
 
+/* ============ 失效报告视图（2026-08-24） ============ */
+
+/** 失效报告条目：报告数 > 0 且未删除的站点 + 最近报告时间 */
+export interface ReportedSite {
+  id: string;
+  title: string;
+  url: string;
+  favicon?: string;
+  description?: string;
+  categoryId?: string;
+  categoryName?: string;
+  reportCount: number;
+  lastReportedAt: number | null;
+}
+
+/** 被报告失效的站点列表，按报告数倒序、最近报告时间倒序（已删除的站点自动排除） */
+export async function getReportedSites(): Promise<ReportedSite[]> {
+  await ensureTables();
+  const db = getClient();
+  const rs = await db.execute(`
+    SELECT s.id, s.title, s.url, s.favicon, s.description, s.category_id,
+           c.name AS category_name,
+           COUNT(r.site_id) AS report_count,
+           MAX(r.created_at) AS last_reported_at
+    FROM sites s
+    LEFT JOIN categories c ON c.id = s.category_id
+    INNER JOIN site_dead_reports r ON r.site_id = s.id
+    WHERE s._deleted = 0
+    GROUP BY s.id
+    ORDER BY report_count DESC, last_reported_at DESC
+  `);
+  return rs.rows.map((r) => ({
+    id: String(r.id),
+    title: String(r.title),
+    url: String(r.url),
+    favicon: r.favicon != null ? String(r.favicon) : undefined,
+    description: r.description != null ? String(r.description) : undefined,
+    categoryId: r.category_id != null ? String(r.category_id) : undefined,
+    categoryName: r.category_name != null ? String(r.category_name) : undefined,
+    reportCount: Number(r.report_count),
+    lastReportedAt: r.last_reported_at != null ? Number(r.last_reported_at) : null,
+  }));
+}
+
 /** 永久删除站点（单条/批量，事务：连带清除失效报告；写后失效导航 + 报告数缓存） */
 export async function purgeSites(siteIds: string[]): Promise<void> {
   if (siteIds.length === 0) return;
