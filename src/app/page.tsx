@@ -4,9 +4,9 @@
  * 纯只读展示站：服务端直读 Turso 数据库 → 过滤墓碑 → SSR 注入 initialSites。
  * 首屏 HTML 即含真实书签（秒开），无客户端同步、无编辑。
  *
- * 静态化（2026-08-24 P0-2）：报失效状态已客户端化（/api/sites/dead-report-state），
- * 页面不再依赖 per-anon cookie → ISR 缓存 HTML（revalidate 6h，与数据缓存 TTL 对齐），
- * 可被 CDN 边缘直出；数据更新后重启容器立即重建。DB 读仍走进程内缓存（turso.ts）。
+ * 静态化策略（2026-08-24 P0-2）：报失效状态已客户端化（/api/sites/dead-report-state），
+ * 页面不再依赖 per-anon cookie。页面保持动态渲染（见下方 dynamic 注释），
+ * CDN 缓存头由 src/proxy.ts 设置（s-maxage=21600），DB 读仍走进程内缓存（turso.ts）。
  *
  * SEO（2026-08-24）：首页展示默认（第一个）顶级分类，各分类独立页在 /c/[id]；
  * 树/子分类卡片均为可抓取链接，首页附带 ItemList 结构化数据。
@@ -19,9 +19,11 @@ import { visibleCategories } from "@/lib/nav-tree";
 import { stripTopPrefix } from "@/lib/format";
 import type { Category } from "@/types";
 
-// ISR：HTML 缓存 6 小时（数据低频变更；报失效状态已客户端化，无个性化依赖）。
-// 数据库读量由数据层缓存（turso.ts / reports.ts）承接
-export const revalidate = 21600;
+// 动态渲染（2026-08-24 P0-2 修正）：不用 ISR/revalidate——
+// build 期（CI 无 Turso env）若预渲染首页会产出「空数据」壳并缓存。
+// 改为动态渲染（运行时读真实数据），CDN 缓存头由 src/proxy.ts 统一设置
+// （`public, s-maxage=21600`），效果与 ISR 等价（边缘缓存 + 浏览器不缓存）。
+export const dynamic = "force-dynamic";
 
 /** 首页 ItemList 结构化数据（默认分类的站点） */
 function homepageItemListJsonLd(categories: Category[]): string {
