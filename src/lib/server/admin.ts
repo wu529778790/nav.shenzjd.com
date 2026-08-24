@@ -5,7 +5,8 @@
  * 表结构由 turso.ts 的 ensureTables 幂等自建（sites / categories / site_dead_reports）。
  */
 
-import { getClient, ensureTables } from "@/lib/server/turso";
+import { getClient, ensureTables, invalidateNavCache } from "@/lib/server/turso";
+import { invalidateReportCountsCache } from "@/lib/server/reports";
 
 /** 站点是否存在 */
 export async function siteExists(siteId: string): Promise<boolean> {
@@ -18,7 +19,7 @@ export async function siteExists(siteId: string): Promise<boolean> {
   return rs.rows.length > 0;
 }
 
-/** 软删除站点（进垃圾箱）：打 _deleted 墓碑标记，首页自动隐藏 */
+/** 软删除站点（进垃圾箱）：打 _deleted 墓碑标记，首页自动隐藏（写后失效导航缓存） */
 export async function deleteSite(siteId: string): Promise<void> {
   await ensureTables();
   const db = getClient();
@@ -26,9 +27,10 @@ export async function deleteSite(siteId: string): Promise<void> {
     sql: "UPDATE sites SET _deleted = 1, deleted_at = ? WHERE id = ?",
     args: [String(Date.now()), siteId],
   });
+  invalidateNavCache();
 }
 
-/** 只清除该站点的失效报告（站点保留） */
+/** 只清除该站点的失效报告（站点保留，写后失效报告数缓存） */
 export async function clearSiteReports(siteId: string): Promise<void> {
   await ensureTables();
   const db = getClient();
@@ -36,6 +38,7 @@ export async function clearSiteReports(siteId: string): Promise<void> {
     sql: "DELETE FROM site_dead_reports WHERE site_id = ?",
     args: [siteId],
   });
+  invalidateReportCountsCache();
 }
 
 /* ============ 全量站点管理（分页表格，2026-08-22） ============ */
@@ -184,7 +187,7 @@ export interface SiteUpdateFields {
   favicon?: string | null;
 }
 
-/** 更新站点信息（只更新提供的字段，null 表示清空可空字段） */
+/** 更新站点信息（只更新提供的字段，null 表示清空可空字段；写后失效导航缓存） */
 export async function updateSite(siteId: string, fields: SiteUpdateFields): Promise<void> {
   await ensureTables();
   const db = getClient();
@@ -214,9 +217,10 @@ export async function updateSite(siteId: string, fields: SiteUpdateFields): Prom
     sql: `UPDATE sites SET ${sets.join(", ")} WHERE id = ?`,
     args,
   });
+  invalidateNavCache();
 }
 
-/** 批量软删除站点（进垃圾箱） */
+/** 批量软删除站点（进垃圾箱；写后失效导航缓存） */
 export async function deleteSites(siteIds: string[]): Promise<void> {
   if (siteIds.length === 0) return;
   await ensureTables();
@@ -226,6 +230,7 @@ export async function deleteSites(siteIds: string[]): Promise<void> {
     sql: `UPDATE sites SET _deleted = 1, deleted_at = ? WHERE id IN (${placeholders})`,
     args: [String(Date.now()), ...siteIds],
   });
+  invalidateNavCache();
 }
 
 /* ============ 垃圾箱（回收站） ============ */
@@ -266,7 +271,7 @@ export async function getTrashSites(): Promise<TrashSite[]> {
   }));
 }
 
-/** 恢复站点（单条/批量）：清除墓碑标记 */
+/** 恢复站点（单条/批量）：清除墓碑标记（写后失效导航缓存） */
 export async function restoreSites(siteIds: string[]): Promise<void> {
   if (siteIds.length === 0) return;
   await ensureTables();
@@ -276,9 +281,10 @@ export async function restoreSites(siteIds: string[]): Promise<void> {
     sql: `UPDATE sites SET _deleted = 0, deleted_at = NULL WHERE id IN (${placeholders})`,
     args: siteIds,
   });
+  invalidateNavCache();
 }
 
-/** 永久删除站点（单条/批量，事务：连带清除失效报告） */
+/** 永久删除站点（单条/批量，事务：连带清除失效报告；写后失效导航 + 报告数缓存） */
 export async function purgeSites(siteIds: string[]): Promise<void> {
   if (siteIds.length === 0) return;
   await ensureTables();
@@ -294,4 +300,6 @@ export async function purgeSites(siteIds: string[]): Promise<void> {
       args: siteIds,
     },
   ]);
+  invalidateNavCache();
+  invalidateReportCountsCache();
 }
