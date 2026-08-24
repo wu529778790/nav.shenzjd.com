@@ -10,22 +10,11 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ["lucide-react", "@dnd-kit/core", "@dnd-kit/sortable"],
   },
   async headers() {
-    return [
-      {
-        // HTML / 页面路由：页面为 force-dynamic 动态渲染，HTML 不缓存，
-        // 保证 per-anon 失效标注等个性化内容最新。数据库读量已由数据层
-        // 进程内缓存承接（turso.ts readNavData 默认 TTL 5 分钟 + 写后失效），
-        // 命中缓存时不再直读 Turso。
-        // API 路由（/api/*）同样不缓存（路由 handler 自己通过 Cache-Control: no-store 控制）。
-        source: "/((?!_next/static|_next/image|favicon.ico|sw\\.js|api/).*)",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: "no-store, max-age=0",
-          },
-        ],
-      },
-    ];
+    // HTML 缓存策略（2026-08-24 P0-2）：不再在 next.config 强制 Cache-Control。
+    // 页面已改为 ISR（revalidate=21600，报失效状态客户端化，无 per-anon 依赖），
+    // 由 Next 自身输出 `Cache-Control: s-maxage=21600, stale-while-revalidate`，
+    // 可被 CDN（Cloudflare）边缘缓存。API 路由由各 handler 自控 no-store。
+    return [];
   },
   images: {
     // 全站私有模式：无 GitHub 头像等外部远程图片（favicon 走 /api/favicon 代理）
