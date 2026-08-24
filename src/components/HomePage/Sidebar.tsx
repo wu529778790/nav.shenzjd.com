@@ -12,6 +12,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { stripTopPrefix } from "@/lib/format";
 import type { Category, Site } from "@/types";
@@ -72,7 +73,6 @@ export function LinkIcon({ className }: { className?: string }) {
 interface SidebarProps {
   categories: Category[];
   activeCategoryId: string | null;
-  onCategoryChange: (categoryId: string) => void;
   /** 移动端：tree 全屏且叶子分类展开时内联显示站点链接（无右侧主区）2026-08-22 用户拍板 */
   showLeafSites?: boolean;
 }
@@ -86,13 +86,35 @@ function countDescendantSites(node: Category): number {
 
 /* ============ 树节点行 ============ */
 
+/** 折叠指示箭头（展开时朝下） */
+function ChevronIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden
+    >
+      <path
+        d="M6 9l6 6l6-6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function CategoryRow({
   node,
   depth,
   activeCategoryId,
   expanded,
   onToggle,
-  onSelect,
   showSites,
   topIndex,
 }: {
@@ -101,7 +123,6 @@ function CategoryRow({
   activeCategoryId: string | null;
   expanded: Set<string>;
   onToggle: (id: string) => void;
-  onSelect: (id: string) => void;
   /** 是否展示站点叶子链接：PC 端右侧已展示 → false；移动端无右侧 → true */
   showSites: boolean;
   /** 顶级分类在顶级数组中的下标（0-based），depth===0 时用于按索引生成编号 */
@@ -114,68 +135,78 @@ function CategoryRow({
 
   return (
     <div>
-      {/* 整行热区：分类 → 选中/进入 + 切换展开；文件夹图标表示可下拐 */}
-      <button
-        type="button"
-        onClick={() => {
-          // 已是当前分类 → 折叠；否则 → 选中并展开
-          if (node.id === activeCategoryId) {
-            onToggle(node.id);
-          } else {
-            onSelect(node.id);
-            if (!isExpanded) onToggle(node.id);
-          }
-        }}
-        aria-expanded={hasChildren ? isExpanded : undefined}
-        title={node.name}
+      {/* 分类行：箭头 = 展开/折叠，分类名 = 链接进入 /c/[id]（可被爬虫抓取） */}
+      <div
         className={cn(
-          "group flex w-full cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-[7px] text-left text-sm transition-colors duration-100",
+          "group flex w-full items-center gap-1 rounded-[var(--radius-sm)] py-[7px] pr-2 text-sm transition-colors duration-100",
           isActive
             ? "bg-[var(--neutral-900)] text-white"
-            : "text-[var(--foreground-secondary)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]",
-          depth > 0 && "pl-[calc(0.5rem+1.5rem)]"
+            : "text-[var(--foreground-secondary)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
         )}
-        style={{ paddingLeft: `${8 + depth * 24}px` }}
+        style={{ paddingLeft: `${6 + depth * 24}px` }}
       >
-        <span
-          className={cn(
-            "flex h-4 w-4 flex-shrink-0 items-center justify-center",
-            isActive ? "text-[var(--accent-500)]" : "text-[var(--accent-500)]"
-          )}
-        >
-          <FolderIcon className="h-4 w-4" />
-        </span>
+        {hasChildren && (
+          <button
+            type="button"
+            onClick={() => onToggle(node.id)}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? `折叠${node.name}` : `展开${node.name}`}
+            className="flex h-5 w-5 flex-shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-xs)] text-[var(--muted-foreground)] transition-transform duration-100 hover:bg-black/10 hover:text-[var(--foreground)]"
+          >
+            <ChevronIcon
+              className={cn(
+                "h-3 w-3 transition-transform duration-100",
+                isExpanded && "rotate-180"
+              )}
+            />
+          </button>
+        )}
 
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate",
-            isActive ? "font-medium text-white" : depth === 0 ? "font-medium" : ""
-          )}
+        <Link
+          href={`/c/${node.id}`}
+          title={node.name}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-[var(--radius-xs)]"
         >
-          {depth === 0 ? (
-            <>
-              {/* 编号固定 2ch 宽（等宽数字 + 右对齐），名字永远从同一起点开始 */}
-              <span className="mr-1.5 inline-block w-[2ch] text-right font-mono tabular-nums">
-                {String((topIndex ?? 0) + 1).padStart(2, "0")}
-              </span>
-              {stripTopPrefix(node.name)}
-            </>
-          ) : (
-            node.name
-          )}
-        </span>
-
-        {totalSites > 0 && (
           <span
             className={cn(
-              "flex-shrink-0 text-[11px] tabular-nums",
-              isActive ? "text-[var(--neutral-400)]" : "text-[var(--muted-foreground)]"
+              "flex h-4 w-4 flex-shrink-0 items-center justify-center",
+              isActive ? "text-[var(--accent-500)]" : "text-[var(--accent-500)]"
             )}
           >
-            {totalSites}
+            <FolderIcon className="h-4 w-4" />
           </span>
-        )}
-      </button>
+
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate",
+              isActive ? "font-medium text-white" : depth === 0 ? "font-medium" : ""
+            )}
+          >
+            {depth === 0 ? (
+              <>
+                {/* 编号固定 2ch 宽（等宽数字 + 右对齐），名字永远从同一起点开始 */}
+                <span className="mr-1.5 inline-block w-[2ch] text-right font-mono tabular-nums">
+                  {String((topIndex ?? 0) + 1).padStart(2, "0")}
+                </span>
+                {stripTopPrefix(node.name)}
+              </>
+            ) : (
+              node.name
+            )}
+          </span>
+
+          {totalSites > 0 && (
+            <span
+              className={cn(
+                "flex-shrink-0 text-[11px] tabular-nums",
+                isActive ? "text-[var(--neutral-400)]" : "text-[var(--muted-foreground)]"
+              )}
+            >
+              {totalSites}
+            </span>
+          )}
+        </Link>
+      </div>
 
       {/* 子分类（展开时递归）——有 children 的分类：树里只展示子分类（文件夹层），自身站点在主区展示 */}
       {hasChildren && isExpanded && (
@@ -188,7 +219,6 @@ function CategoryRow({
               activeCategoryId={activeCategoryId}
               expanded={expanded}
               onToggle={onToggle}
-              onSelect={onSelect}
               showSites={showSites}
             />
           ))}
@@ -244,12 +274,7 @@ function SiteRow({
 
 /* ============ 主组件 ============ */
 
-export function Sidebar({
-  categories,
-  activeCategoryId,
-  onCategoryChange,
-  showLeafSites = false,
-}: SidebarProps) {
+export function Sidebar({ categories, activeCategoryId, showLeafSites = false }: SidebarProps) {
   // 展开状态：默认全部收起（仅显示顶级分类名称，点击再展开）
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
@@ -315,7 +340,6 @@ export function Sidebar({
           activeCategoryId={activeCategoryId}
           expanded={expanded}
           onToggle={toggle}
-          onSelect={onCategoryChange}
           showSites={showSites}
           topIndex={idx}
         />
