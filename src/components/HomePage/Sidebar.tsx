@@ -171,10 +171,17 @@ function CategoryRow({
           href={`/c/${node.id}`}
           title={node.name}
           onClick={(e) => {
-            // 修饰键（新标签/新窗口）保持原生行为；普通左键走零请求本地切换
+            // 修饰键（新标签/新窗口）保持原生行为；普通左键走站内交互
             if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
             e.preventDefault();
-            onNavigate(node.id);
+            if (node.id === activeCategoryId) {
+              // 已选中的分类再点一次 = 折叠/展开切换（2026-08-24 修复：
+              // 此前导航副作用只会展开、无法用分类名折叠，只能点箭头）
+              onToggle(node.id);
+            } else {
+              // 未选中：进入该分类（自动展开祖先链由 Sidebar effect 处理）
+              onNavigate(node.id);
+            }
           }}
           className="flex min-w-0 flex-1 items-center gap-2 rounded-[var(--radius-xs)]"
         >
