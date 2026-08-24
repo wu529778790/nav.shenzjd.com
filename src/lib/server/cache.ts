@@ -24,8 +24,8 @@ interface CacheStore {
   inflight: Map<string, Promise<unknown>>;
 }
 
-/** 默认 TTL：5 分钟（导航数据由导入脚本低频更新，完全够用） */
-export const DEFAULT_TTL_MS = 5 * 60 * 1000;
+/** 默认 TTL：6 小时（导航数据基本不改动；所有写路径都会主动失效，TTL 仅兜底） */
+export const DEFAULT_TTL_MS = 6 * 60 * 60 * 1000;
 
 function getStore(): CacheStore {
   const g = globalThis as unknown as { __navCacheStore?: CacheStore };
