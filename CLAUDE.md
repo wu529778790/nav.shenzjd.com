@@ -62,7 +62,7 @@ Build uses Next.js standalone output (`output: "standalone"` in `next.config.ts`
 ### Styling
 
 - Tailwind CSS v4 with CSS-based config (no `tailwind.config.js`). Theme is CSS-only via `@theme inline` in `src/app/globals.css`. Colors use CSS custom properties (`var(--foreground)`, `var(--background)`, `var(--accent-500)`, etc.), not Tailwind color classes.
-- Single light theme only — **no dark mode**.
+- Light + dark themes: `<html data-theme>` drives `[data-theme="dark"]` overrides in globals.css. Applied before hydration by an inline script in `src/app/layout.tsx` (localStorage `theme` wins, defaults to system `prefers-color-scheme`), toggled by `src/components/ThemeToggle.tsx`. Always reference CSS variables so both themes work.
 - Component classes are defined in `globals.css` (`@layer components`): `.card`, `.site-card`, `.input`, `.empty-state`, etc. — use these, don't recreate them.
 - `cn()` utility (clsx + tailwind-merge) in `src/lib/utils.ts`.
 
