@@ -1,10 +1,11 @@
 /**
- * 分类独立页 /c/[id]（服务端组件，2026-08-24 SEO）
+ * 分类独立页 /c/[id]（服务端组件，2026-08-24 SEO；2026-08-24 P0-2 静态化）
  *
  * 每个分类一个可独立收录的 URL：复用 HomeClient 布局（树 + 主区），
  * 通过 initialActiveCategoryId 让页面初始定位到该分类。
  *
- * - 动态 SSR + DB 层缓存（与首页一致；build 期不连 Turso，故不做 SSG）；
+ * - ISR（revalidate 6h，与数据缓存 TTL 对齐）：报失效状态已客户端化，
+ *   页面不再依赖 per-anon cookie → HTML 可缓存/CDN 直出；数据更新后重启容器重建；
  * - generateMetadata 动态 title/description + canonical；
  * - JSON-LD：BreadcrumbList + ItemList 结构化数据；
  * - 分类不存在或为墓碑 → 404。
@@ -12,15 +13,14 @@
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { cookies } from "next/headers";
 import { readNavData } from "@/lib/server/turso";
-import { getReportCounts, getReportedSiteIds } from "@/lib/server/reports";
+import { getReportCounts } from "@/lib/server/reports";
 import { findNode, findPath, countDescendantSites, visibleCategories } from "@/lib/nav-tree";
 import { stripTopPrefix } from "@/lib/format";
 import HomeClient from "@/components/HomePage/HomeClient";
 import type { Category } from "@/types";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 21600;
 
 const SITE_URL = "https://navhub.shenzjd.com";
 
@@ -100,18 +100,10 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
   if (!loaded) notFound();
   const { node, categories } = loaded;
 
-  // 失效标注（与首页一致，失败降级为空）
+  // 失效报告数（全局聚合，可随 ISR 缓存；用户已报状态由客户端拉取）
   let initialReportCounts: Record<string, number> = {};
-  let initialReportedSiteIds: string[] = [];
   try {
-    const store = await cookies();
-    const anonId = store.get("anon_id")?.value;
-    const [counts, reported] = await Promise.all([
-      getReportCounts(),
-      anonId ? getReportedSiteIds(anonId) : Promise.resolve<string[]>([]),
-    ]);
-    initialReportCounts = Object.fromEntries(counts);
-    initialReportedSiteIds = reported;
+    initialReportCounts = Object.fromEntries(await getReportCounts());
   } catch (error) {
     console.error("分类页读取失效标注失败，降级为空:", error);
   }
@@ -126,7 +118,6 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
         initialSites={categories}
         initialActiveCategoryId={id}
         initialReportCounts={initialReportCounts}
-        initialReportedSiteIds={initialReportedSiteIds}
       />
     </>
   );
