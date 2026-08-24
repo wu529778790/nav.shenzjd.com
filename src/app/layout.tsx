@@ -48,6 +48,17 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+/** 全站 WebSite 结构化数据（JSON-LD，2026-08-24 SEO） */
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "神族九帝的收藏夹",
+  url: "https://navhub.shenzjd.com",
+  description:
+    "神族九帝的收藏夹：个人导航书签聚合站，聚合影视、阅读、工具、AI、资源搜索等优质链接。",
+  inLanguage: "zh-CN",
+};
+
 /**
  * 根布局
  *
@@ -68,6 +79,10 @@ export default function RootLayout({
         }}
       />
       <body className="antialiased">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+        />
         <ErrorBoundary>{children}</ErrorBoundary>
       </body>
     </html>
