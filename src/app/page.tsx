@@ -3,6 +3,9 @@
  *
  * 纯只读展示站：服务端直读 Turso 数据库 → 过滤墓碑 → SSR 注入 initialSites。
  * 首屏 HTML 即含真实书签（秒开），无客户端同步、无编辑。
+ *
+ * 读量优化（2026-08-24）：页面本身保持动态渲染，但 DB 读走进程内缓存——
+ * readNavData 命中缓存时零数据库读（默认 TTL 5 分钟），仅报失效等写入才打库。
  */
 
 import { readNavData } from "@/lib/server/turso";
@@ -11,7 +14,8 @@ import { cookies } from "next/headers";
 import HomeClient from "@/components/HomePage/HomeClient";
 import type { Category, Site } from "@/types";
 
-// 强制动态渲染：每次请求实时读库
+// 强制动态渲染：HTML 不缓存（失效标注是 per-anon 个性化数据）；
+// 数据库读量由数据层缓存（turso.ts / reports.ts）承接
 export const dynamic = "force-dynamic";
 
 /** 渲染前过滤墓碑条目（数据里可能有 _deleted 标记） */
