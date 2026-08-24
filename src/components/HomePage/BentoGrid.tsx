@@ -28,14 +28,20 @@ function previewSites(node: Category): Site[] {
   return out.slice(0, 3);
 }
 
-/** 统一文件夹卡片（整卡链接到分类页 /c/[id]） */
-function FolderCard({ node }: { node: Category }) {
+/** 统一文件夹卡片（整卡链接到分类页 /c/[id]；onClick 拦截走零请求本地切换） */
+function FolderCard({ node, onNavigate }: { node: Category; onNavigate: (id: string) => void }) {
   const count = countDescendantSites(node);
   const previews = previewSites(node);
 
   return (
     <Link
       href={`/c/${node.id}`}
+      onClick={(e) => {
+        // 修饰键（新标签/新窗口）保持原生行为；普通左键走零请求本地切换
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        onNavigate(node.id);
+      }}
       className="card group flex min-w-0 flex-col gap-3 p-5 text-left transition-colors duration-100 hover:border-[var(--accent-500)]"
     >
       {/* 顶行：文件夹图标 + 标题 + 计数 */}
@@ -102,13 +108,19 @@ function FolderCard({ node }: { node: Category }) {
  * 子分类网格：统一等大的文件夹卡片。
  * 响应式：移动端 1 列、平板 2 列、桌面 3 列。
  */
-export function BentoSubCategoryGrid({ nodes }: { nodes: Category[] }) {
+export function BentoSubCategoryGrid({
+  nodes,
+  onNavigate,
+}: {
+  nodes: Category[];
+  onNavigate: (id: string) => void;
+}) {
   if (nodes.length === 0) return null;
 
   return (
     <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {nodes.map((node) => (
-        <FolderCard key={node.id} node={node} />
+        <FolderCard key={node.id} node={node} onNavigate={onNavigate} />
       ))}
     </div>
   );
