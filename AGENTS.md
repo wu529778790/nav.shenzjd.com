@@ -30,7 +30,7 @@ CI needs no env vars (build doesn't connect to Turso). Locally, copy `.env.examp
 
 - **Pure read-only site (since 2026-08-21)**: no login, no edit, no delete, no client sync. Data lives in **Turso (libsql)** via `src/lib/server/turso.ts` (normalized `categories` / `sites` / `nav_meta` tables; `categories.parent_id` is a self-reference forming the tree). Updated only by `scripts/import-sources.mjs`, never from the UI.
 - **SSR, not client fetch**: `src/app/page.tsx` reads Turso server-side and injects the tree into `HomeClient`. There is no `/api/data` frontend interface and no `localStorage`.
-- **DB reads are cached (since 2026-08-24)**: single-instance Docker deploy → in-process TTL cache via `src/lib/server/cache.ts` (globalThis singleton + single-flight). `readNavData` hits cache by default (TTL 5 min, `NAV_CACHE_TTL_SECONDS` env), `getReportCounts` has a 30s TTL; every writer (`writeNavData`, report add/remove, admin ops) invalidates on write so changes are visible immediately. Only writes hit the DB.
+- **DB reads are cached (since 2026-08-24)**: single-instance Docker deploy → in-process TTL cache via `src/lib/server/cache.ts` (globalThis singleton + single-flight). `readNavData` hits cache by default (TTL 6 h, `NAV_CACHE_TTL_SECONDS` env; data rarely changes, restart container to see imported changes immediately), `getReportCounts` has a 5 min TTL; every writer (`writeNavData`, report add/remove, admin ops) invalidates on write so changes are visible immediately. Only writes hit the DB.
 - **`src/data/sites.json`** is the committed seed fallback (used by `sitemap.ts`). Runtime data lives in Turso, not in a local JSON file.
 - **Tailwind v4 — no `tailwind.config.js`**. Theme is CSS-only via `@theme inline` in `src/app/globals.css`. Use CSS custom properties (`var(--foreground)`, `var(--accent-500)`, …), not Tailwind color classes. **Light theme only — no dark mode.**
 - **Proxy at `src/proxy.ts`** (Next 16 convention; was `middleware.ts`), not root-level. Sets CSP, HSTS, security headers. CSP is built dynamically by `buildContentSecurityPolicy()` from `src/lib/runtime-policies.ts`.
@@ -41,7 +41,7 @@ CI needs no env vars (build doesn't connect to Turso). Locally, copy `.env.examp
 No client state library and no client mutation. Data flows one way:
 
 ```text
-page.tsx (SSR) → readNavData() 命中内存缓存（未命中才直读 Turso，TTL 5min）→ 过滤墓碑 → 注入 initialCategories → HomeClient
+page.tsx (SSR) → readNavData() 命中内存缓存（未命中才直读 Turso，TTL 6h）→ 过滤墓碑 → 注入 initialCategories → HomeClient
 ```
 
 `HomeClient` renders a left tree (`Sidebar`), a header search (`AppHeader`), and the main area (breadcrumb + Bento subcategory grid + static site board + global search results). The tree is collapsed by default; navigating auto-expands the active path.
