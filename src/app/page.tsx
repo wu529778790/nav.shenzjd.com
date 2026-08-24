@@ -5,7 +5,7 @@
  * 首屏 HTML 即含真实书签（秒开），无客户端同步、无编辑。
  *
  * 读量优化（2026-08-24）：页面本身保持动态渲染，但 DB 读走进程内缓存——
- * readNavData 命中缓存时零数据库读（默认 TTL 5 分钟），仅报失效等写入才打库。
+ * readNavData 命中缓存时零数据库读（默认 TTL 6 小时），仅报失效等写入才打库。
  */
 
 import { readNavData } from "@/lib/server/turso";
