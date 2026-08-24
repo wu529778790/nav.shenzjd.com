@@ -39,7 +39,7 @@ page.tsx (SSR) → readNavData() reads Turso → filters tombstones → injects 
 
 ### Key Directories
 
-- `src/app/` — App Router pages and API routes (`/api/favicon` only). `layout.tsx` (self-hosted font + ErrorBoundary), `page.tsx` (SSR), `globals.css` (theme), `robots.ts`, `sitemap.ts` (uses the `src/data/sites.json` seed).
+- `src/app/` — App Router pages and API routes (`/api/favicon`, `/api/sites/[siteId]/dead-report`, `/api/sites/dead-report-state`). `layout.tsx` (self-hosted font + ErrorBoundary), `page.tsx` (SSR), `globals.css` (theme), `robots.ts`, `sitemap.ts` (uses the `src/data/sites.json` seed). Pages are ISR (`revalidate = 21600`); report state is client-fetched so HTML has no per-anon dependency.
 - `src/components/layout/` — `AppHeader` (logo + global search with `⌘K`), `AppLayout`.
 - `src/components/HomePage/` — `Sidebar` (recursive tree; collapsed by default, whole-row clickable, folder icon = category, link icon = leaf site), `HomeClient` (assembles header + sidebar + main: breadcrumb, Bento subcategory grid, static site board, global search), `StaticBoard` (`StaticSiteCard`: favicon + title + "备用链接" chip for `description === "备用地址"`), `BentoGrid` (`BentoSubCategoryGrid`: uniform folder cards).
 - `src/components/FaviconImage.tsx` — favicon with proxy fallback.
