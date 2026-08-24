@@ -19,8 +19,11 @@ let client: Client | null = null;
 /** 导航数据缓存键 */
 const NAV_CACHE_KEY = "nav:data";
 
-/** 导航数据缓存 TTL（秒，默认 300 = 5 分钟；导入脚本独立进程改库靠它兜底） */
-const NAV_CACHE_TTL_MS = (Number(process.env.NAV_CACHE_TTL_SECONDS) || 300) * 1000;
+/**
+ * 导航数据缓存 TTL（秒，默认 21600 = 6 小时）。
+ * 数据基本不改动；独立进程导入脚本改库后靠它兜底，或重启容器立即生效。
+ */
+const NAV_CACHE_TTL_MS = (Number(process.env.NAV_CACHE_TTL_SECONDS) || 21600) * 1000;
 
 /** 后台/写入方改库后主动失效导航缓存（首页下一次访问立即拿到新数据） */
 export function invalidateNavCache(): void {
