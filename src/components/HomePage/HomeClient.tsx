@@ -1,49 +1,31 @@
 /**
- * 首页客户端交互层（2026-08-21 树形导航站重构）
+ * 首页客户端交互层（2026-08-21 树形导航站重构；2026-08-24 URL 驱动化）
  *
  * 数据由服务端 page.tsx 直读 Turso 注入 initialSites（树形结构，最深 5 层）。
  * 布局：Header（搜索）+ 左侧树 + 主区（面包屑 / 标题 meta / Bento 子分类 / 站点网格）。
- * 交互：整行热区树导航；⌘K 聚焦搜索；Esc 清除搜索。
+ * 交互：⌘K 聚焦搜索；Esc 清除搜索。
+ *
+ * 当前分类由 URL 驱动（SEO，2026-08-24）：
+ * - 首页 / → initialActiveCategoryId 为空 → 默认第一个顶级分类；
+ * - /c/[id] → 分类页传入该 id → 树/面包屑/主区全部指向该分类；
+ * - 所有分类导航（树节点 / 子分类卡片 / 面包屑）都是 <Link> 或 router.push，
+ *   每个分类有独立可被爬虫抓取的 URL。
  */
 
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Sidebar } from "@/components/HomePage/Sidebar";
 import { StaticBoard } from "@/components/HomePage/StaticBoard";
 import { BentoSubCategoryGrid } from "@/components/HomePage/BentoGrid";
+import { findNode, findPath, countDescendantSites } from "@/lib/nav-tree";
 import { formatTopCategoryName } from "@/lib/format";
 import type { Category, Site } from "@/types";
 
 /* ============ 树工具函数 ============ */
-
-/** 在树中查找节点 */
-function findNode(categories: Category[], id: string | null): Category | null {
-  if (!id) return null;
-  for (const c of categories) {
-    if (c.id === id) return c;
-    if (c.children) {
-      const found = findNode(c.children, id);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-/** 返回节点到根的路径（根 → 节点） */
-function findPath(categories: Category[], id: string | null): Category[] {
-  if (!id) return [];
-  for (const c of categories) {
-    if (c.id === id) return [c];
-    if (c.children) {
-      const sub = findPath(c.children, id);
-      if (sub.length > 0) return [c, ...sub];
-    }
-  }
-  return [];
-}
 
 /** 统计树中总站点数 */
 function countTotalSites(categories: Category[]): number {
@@ -73,13 +55,6 @@ function flattenTree(categories: Category[]): Array<{
   };
   walk(categories, []);
   return out;
-}
-
-/** 统计节点下挂站点总数（含子孙） */
-function countDescendantSites(node: Category): number {
-  let n = node.sites.length;
-  for (const c of node.children ?? []) n += countDescendantSites(c);
-  return n;
 }
 
 /* ============ 面包屑 ============ */
@@ -216,19 +191,21 @@ function GlobalSearchResults({
 
 export default function HomeClient({
   initialSites = [],
+  initialActiveCategoryId = null,
   initialReportCounts = {},
   initialReportedSiteIds = [],
 }: {
   initialSites?: Category[];
+  /** URL 驱动的当前分类（SEO，2026-08-24）：/c/[id] 传入该 id，首页为空 → 默认第一个顶级分类 */
+  initialActiveCategoryId?: string | null;
   initialReportCounts?: Record<string, number>;
   initialReportedSiteIds?: string[];
 }) {
+  const router = useRouter();
   const categories = initialSites;
 
-  // 当前选中节点 id（树中任意层）
-  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
-    () => categories[0]?.id ?? null
-  );
+  // 当前分类完全由 URL 派生（客户端导航时 Next 会以新 props 重新渲染，无需本地 state）
+  const activeCategoryId = initialActiveCategoryId ?? categories[0]?.id ?? null;
 
   // 全局搜索词
   const [searchQuery, setSearchQuery] = useState("");
@@ -245,14 +222,6 @@ export default function HomeClient({
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
   }, []);
-
-  // 数据变化时若当前 id 失效，回退到根第一个节点
-  useEffect(() => {
-    if (!activeCategoryId || !findNode(categories, activeCategoryId)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- 初始化回退
-      setActiveCategoryId(categories[0]?.id ?? null);
-    }
-  }, [categories, activeCategoryId]);
 
   const activeCategory = findNode(categories, activeCategoryId);
   const activePath = findPath(categories, activeCategoryId);
@@ -277,16 +246,17 @@ export default function HomeClient({
     });
   })();
 
-  // 切换分类：清除搜索
-  const handleCategoryChange = (id: string) => {
-    setActiveCategoryId(id);
+  // 切换分类：客户端导航到 /c/[id]（保持 URL 与内容一致，SEO 可抓取）
+  const goCategory = (id: string) => {
     setSearchQuery("");
+    router.push(`/c/${id}`);
   };
 
   // 点击 logo：跳转到第一个顶级分类（2026-08-22 用户拍板）
   const handleLogoClick = () => {
-    setActiveCategoryId(categories[0]?.id ?? null);
+    const first = categories[0]?.id;
     setSearchQuery("");
+    router.push(first ? `/c/${first}` : "/");
   };
 
   // ============ 快捷键 ============
@@ -320,7 +290,6 @@ export default function HomeClient({
         <Sidebar
           categories={categories}
           activeCategoryId={activeCategory?.id ?? null}
-          onCategoryChange={handleCategoryChange}
           showLeafSites={isMobile}
         />
 
@@ -362,11 +331,7 @@ export default function HomeClient({
                     </button>
                   </div>
                 ) : (
-                  <Breadcrumb
-                    path={activePath}
-                    topIndexMap={topIndexMap}
-                    onNavigate={handleCategoryChange}
-                  />
+                  <Breadcrumb path={activePath} topIndexMap={topIndexMap} onNavigate={goCategory} />
                 )}
 
                 <span className="ml-auto text-xs tabular-nums text-[var(--muted-foreground)]">
@@ -379,7 +344,7 @@ export default function HomeClient({
                 <GlobalSearchResults
                   results={globalSearchResults}
                   topIndexMap={topIndexMap}
-                  onJumpToCategory={handleCategoryChange}
+                  onJumpToCategory={goCategory}
                 />
               ) : activeCategory ? (
                 <div className="space-y-8">
@@ -407,10 +372,7 @@ export default function HomeClient({
                       <h2 className="mb-3 text-[13px] font-semibold text-[var(--foreground)]">
                         子分类
                       </h2>
-                      <BentoSubCategoryGrid
-                        nodes={activeCategory.children}
-                        onNavigate={handleCategoryChange}
-                      />
+                      <BentoSubCategoryGrid nodes={activeCategory.children} />
                     </section>
                   )}
 
