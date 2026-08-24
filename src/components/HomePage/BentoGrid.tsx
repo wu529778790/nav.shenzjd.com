@@ -4,9 +4,10 @@
  * 子分类文件夹网格（2026-08-22 统一规格）
  *
  * 所有子分类以等大的文件夹卡片呈现，避免 Bento 大小交错导致的不统一。
- * 整卡可点击 → 进入该子分类。
+ * 整卡可点击 → 链接到 /c/[id] 分类页（2026-08-24：由 button 改为 Link，可被爬虫抓取）。
  */
 
+import Link from "next/link";
 import { FaviconImage } from "@/components/FaviconImage";
 import type { Category, Site } from "@/types";
 
@@ -27,15 +28,14 @@ function previewSites(node: Category): Site[] {
   return out.slice(0, 3);
 }
 
-/** 统一文件夹卡片 */
-function FolderCard({ node, onNavigate }: { node: Category; onNavigate: (id: string) => void }) {
+/** 统一文件夹卡片（整卡链接到分类页 /c/[id]） */
+function FolderCard({ node }: { node: Category }) {
   const count = countDescendantSites(node);
   const previews = previewSites(node);
 
   return (
-    <button
-      type="button"
-      onClick={() => onNavigate(node.id)}
+    <Link
+      href={`/c/${node.id}`}
       className="card group flex min-w-0 flex-col gap-3 p-5 text-left transition-colors duration-100 hover:border-[var(--accent-500)]"
     >
       {/* 顶行：文件夹图标 + 标题 + 计数 */}
@@ -59,7 +59,9 @@ function FolderCard({ node, onNavigate }: { node: Category; onNavigate: (id: str
             {node.name}
           </span>
         </span>
-        <span className="flex-shrink-0 text-[13px] text-[var(--muted-foreground)]">{count} 个网站</span>
+        <span className="flex-shrink-0 text-[13px] text-[var(--muted-foreground)]">
+          {count} 个网站
+        </span>
       </div>
 
       {/* 站点预览 chips（最多 3 个，统一高度） */}
@@ -80,15 +82,19 @@ function FolderCard({ node, onNavigate }: { node: Category; onNavigate: (id: str
                   iconClassName="h-2.5 w-2.5 text-[var(--muted-foreground)]"
                 />
               </span>
-              <span className="truncate text-xs text-[var(--foreground-secondary)]">{site.title}</span>
+              <span className="truncate text-xs text-[var(--foreground-secondary)]">
+                {site.title}
+              </span>
             </span>
           ))}
           {count > previews.length && (
-            <span className="text-xs text-[var(--muted-foreground)]">+{count - previews.length}</span>
+            <span className="text-xs text-[var(--muted-foreground)]">
+              +{count - previews.length}
+            </span>
           )}
         </div>
       )}
-    </button>
+    </Link>
   );
 }
 
@@ -96,19 +102,13 @@ function FolderCard({ node, onNavigate }: { node: Category; onNavigate: (id: str
  * 子分类网格：统一等大的文件夹卡片。
  * 响应式：移动端 1 列、平板 2 列、桌面 3 列。
  */
-export function BentoSubCategoryGrid({
-  nodes,
-  onNavigate,
-}: {
-  nodes: Category[];
-  onNavigate: (id: string) => void;
-}) {
+export function BentoSubCategoryGrid({ nodes }: { nodes: Category[] }) {
   if (nodes.length === 0) return null;
 
   return (
     <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {nodes.map((node) => (
-        <FolderCard key={node.id} node={node} onNavigate={onNavigate} />
+        <FolderCard key={node.id} node={node} />
       ))}
     </div>
   );
