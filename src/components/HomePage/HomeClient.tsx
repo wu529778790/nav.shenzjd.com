@@ -5,17 +5,17 @@
  * 布局：Header（搜索）+ 左侧树 + 主区（面包屑 / 标题 meta / Bento 子分类 / 站点网格）。
  * 交互：⌘K 聚焦搜索；Esc 清除搜索。
  *
- * 当前分类由 URL 驱动（SEO，2026-08-24）：
- * - 首页 / → initialActiveCategoryId 为空 → 默认第一个顶级分类；
- * - /c/[id] → 分类页传入该 id → 树/面包屑/主区全部指向该分类；
- * - 所有分类导航（树节点 / 子分类卡片 / 面包屑）都是 <Link> 或 router.push，
- *   每个分类有独立可被爬虫抓取的 URL。
+ * 当前分类由 URL 驱动（SEO，2026-08-24）+ 零请求导航（2026-08-24 性能优化）：
+ * - 首页 / → 默认第一个顶级分类；/c/[id] → 直达该分类（SSR 初始化）。
+ * - 站内导航（树节点 / 子分类卡片 / 面包屑 / Logo）不再整页刷新：
+ *   本地 state 切换 + history.pushState 同步 URL → 零网络请求；
+ *   后退/前进由 popstate 从 URL 恢复分类。
+ * - <Link href> 保留供爬虫抓取与新标签打开，onClick 拦截走本地切换。
  */
 
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Sidebar } from "@/components/HomePage/Sidebar";
@@ -201,11 +201,13 @@ export default function HomeClient({
   initialReportCounts?: Record<string, number>;
   initialReportedSiteIds?: string[];
 }) {
-  const router = useRouter();
   const categories = initialSites;
 
-  // 当前分类完全由 URL 派生（客户端导航时 Next 会以新 props 重新渲染，无需本地 state）
-  const activeCategoryId = initialActiveCategoryId ?? categories[0]?.id ?? null;
+  // 当前分类：本地 state（2026-08-24 零请求导航）。直达 /c/[id] 时由 SSR props 初始化；
+  // 站内导航本地切换 + history.pushState 同步 URL，不再整页刷新。
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(
+    () => initialActiveCategoryId ?? categories[0]?.id ?? null
+  );
 
   // 全局搜索词
   const [searchQuery, setSearchQuery] = useState("");
@@ -232,7 +234,6 @@ export default function HomeClient({
     const map = new Map<string, number>();
     categories.forEach((c, i) => map.set(c.id, i));
     return map;
-    // eslint-disable-next-line react-hooks/preserve-manual-memoization -- SSR 注入的不可变初始 props
   }, [categories]);
 
   // ============ 全局搜索结果（跨整棵树） ============
@@ -246,17 +247,21 @@ export default function HomeClient({
     });
   })();
 
-  // 切换分类：客户端导航到 /c/[id]（保持 URL 与内容一致，SEO 可抓取）
-  const goCategory = (id: string) => {
+  // 切换分类：本地 state 切换 + history.pushState 同步 URL（零请求；SEO 由 <Link href> 保留）
+  const navigateToCategory = (id: string) => {
     setSearchQuery("");
-    router.push(`/c/${id}`);
+    setActiveCategoryId(id);
+    window.history.pushState({ nav: true }, "", `/c/${id}`);
+    window.scrollTo(0, 0);
   };
 
   // 点击 logo：跳转到第一个顶级分类（2026-08-22 用户拍板）
   const handleLogoClick = () => {
     const first = categories[0]?.id;
     setSearchQuery("");
-    router.push(first ? `/c/${first}` : "/");
+    setActiveCategoryId(first ?? null);
+    window.history.pushState({ nav: true }, "", first ? `/c/${first}` : "/");
+    window.scrollTo(0, 0);
   };
 
   // ============ 快捷键 ============
@@ -275,6 +280,28 @@ export default function HomeClient({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // 后退/前进：从 URL 恢复分类（popstate 由浏览器触发，本地切换，无网络请求）
+  useEffect(() => {
+    const onPopState = () => {
+      const m = window.location.pathname.match(/^\/c\/([^/]+)$/);
+      const id = m ? m[1] : null;
+      setSearchQuery("");
+      setActiveCategoryId(id ?? categories[0]?.id ?? null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [categories]);
+
+  // 本地切换分类后同步 <title>（整页刷新时代由 generateMetadata 完成，此处补本地路径）
+  useEffect(() => {
+    const displayName = activeCategory
+      ? activeCategory.parentId == null
+        ? formatTopCategoryName(activeCategory.name, topIndexMap.get(activeCategory.id) ?? 0)
+        : activeCategory.name
+      : null;
+    document.title = displayName ? `${displayName} | 神族九帝的收藏夹` : "神族九帝的收藏夹";
+  }, [activeCategory, topIndexMap]);
+
   const totalSites = countTotalSites(categories);
 
   return (
@@ -291,6 +318,7 @@ export default function HomeClient({
           categories={categories}
           activeCategoryId={activeCategory?.id ?? null}
           showLeafSites={isMobile}
+          onNavigate={navigateToCategory}
         />
 
         {/* ========== 右侧主区（仅桌面端显示；移动端整体就是 tree） ========== */}
@@ -331,7 +359,7 @@ export default function HomeClient({
                     </button>
                   </div>
                 ) : (
-                  <Breadcrumb path={activePath} topIndexMap={topIndexMap} onNavigate={goCategory} />
+                  <Breadcrumb path={activePath} topIndexMap={topIndexMap} onNavigate={navigateToCategory} />
                 )}
 
                 <span className="ml-auto text-xs tabular-nums text-[var(--muted-foreground)]">
@@ -344,7 +372,7 @@ export default function HomeClient({
                 <GlobalSearchResults
                   results={globalSearchResults}
                   topIndexMap={topIndexMap}
-                  onJumpToCategory={goCategory}
+                  onJumpToCategory={navigateToCategory}
                 />
               ) : activeCategory ? (
                 <div className="space-y-8">
@@ -372,7 +400,7 @@ export default function HomeClient({
                       <h2 className="mb-3 text-[13px] font-semibold text-[var(--foreground)]">
                         子分类
                       </h2>
-                      <BentoSubCategoryGrid nodes={activeCategory.children} />
+                      <BentoSubCategoryGrid nodes={activeCategory.children} onNavigate={navigateToCategory} />
                     </section>
                   )}
 
