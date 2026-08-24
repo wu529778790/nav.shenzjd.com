@@ -11,14 +11,31 @@
  */
 
 import { getClient, ensureTables } from "@/lib/server/turso";
+import { cacheGetOrLoad, cacheInvalidate } from "@/lib/server/cache";
 
 export interface ReportState {
   reported: boolean;
   count: number;
 }
 
-/** 所有站点的报告数 → Map<siteId, count> */
+/** 全站报告数缓存：短 TTL 兜底（30s），报失效/后台清除时主动失效立即可见 */
+const REPORT_COUNTS_KEY = "reports:counts";
+const REPORT_COUNTS_TTL_MS = 30 * 1000;
+
+/** 报告数变更方（addReport / removeReport / 后台清除）写库后主动失效 */
+export function invalidateReportCountsCache(): void {
+  cacheInvalidate(REPORT_COUNTS_KEY);
+}
+
+/**
+ * 所有站点的报告数 → Map<siteId, count>
+ * 走进程内短 TTL 缓存（聚合查询是全表 GROUP BY，首页每次访问都会打）。
+ */
 export async function getReportCounts(): Promise<Map<string, number>> {
+  return cacheGetOrLoad(REPORT_COUNTS_KEY, getReportCountsUncached, REPORT_COUNTS_TTL_MS);
+}
+
+async function getReportCountsUncached(): Promise<Map<string, number>> {
   await ensureTables();
   const db = getClient();
   const rs = await db.execute(
@@ -64,7 +81,7 @@ export async function recentReportCount(anonId: string, sinceMs: number): Promis
   return Number(rs.rows[0]?.c ?? 0);
 }
 
-/** 报失效（幂等：已报则返回当前状态） */
+/** 报失效（幂等：已报则返回当前状态）。写库后主动失效报告数缓存。 */
 export async function addReport(anonId: string, siteId: string): Promise<ReportState> {
   await ensureTables();
   const db = getClient();
@@ -72,10 +89,11 @@ export async function addReport(anonId: string, siteId: string): Promise<ReportS
     sql: "INSERT OR IGNORE INTO site_dead_reports (site_id, anon_id, created_at) VALUES (?, ?, ?)",
     args: [siteId, anonId, Date.now()],
   });
+  invalidateReportCountsCache();
   return { reported: true, count: await getReportCount(siteId) };
 }
 
-/** 取消报失效（幂等：未报则返回当前状态） */
+/** 取消报失效（幂等：未报则返回当前状态）。写库后主动失效报告数缓存。 */
 export async function removeReport(anonId: string, siteId: string): Promise<ReportState> {
   await ensureTables();
   const db = getClient();
@@ -83,5 +101,6 @@ export async function removeReport(anonId: string, siteId: string): Promise<Repo
     sql: "DELETE FROM site_dead_reports WHERE site_id = ? AND anon_id = ?",
     args: [siteId, anonId],
   });
+  invalidateReportCountsCache();
   return { reported: false, count: await getReportCount(siteId) };
 }
