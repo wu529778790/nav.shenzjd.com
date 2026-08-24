@@ -48,6 +48,18 @@ export interface TrashSite {
   deletedAt: number | null;
 }
 
+export interface ReportedSite {
+  id: string;
+  title: string;
+  url: string;
+  favicon?: string;
+  description?: string;
+  categoryId?: string;
+  categoryName?: string;
+  reportCount: number;
+  lastReportedAt: number | null;
+}
+
 /** unix ms → 本地时间 */
 function formatTime(ts: number | null): string {
   if (!ts) return "-";
@@ -249,9 +261,13 @@ export default function AdminClient({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 垃圾箱（回收站）
-  const [tab, setTab] = useState<"sites" | "trash">("sites");
+  const [tab, setTab] = useState<"sites" | "reports" | "trash">("sites");
   const [trash, setTrash] = useState<TrashSite[]>([]);
   const [trashSelected, setTrashSelected] = useState<Set<string>>(new Set());
+
+  // 失效报告视图：被用户报失效的站点（报告数 > 0）
+  const [reported, setReported] = useState<ReportedSite[]>([]);
+  const [reportedSelected, setReportedSelected] = useState<Set<string>>(new Set());
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -307,6 +323,23 @@ export default function AdminClient({
   useEffect(() => {
     if (tab === "trash" && login) void loadTrash();
   }, [tab, login, loadTrash]);
+
+  // 切到失效报告 tab 时加载
+  const loadReported = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/sites/reported");
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as { items: ReportedSite[] };
+      setReported(data.items ?? []);
+      setReportedSelected(new Set());
+    } catch {
+      showToast("加载失效报告失败，请重试");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "reports" && login) void loadReported();
+  }, [tab, login, loadReported]);
 
   if (!login) {
     return <LoginCard error={error} />;
@@ -432,6 +465,85 @@ export default function AdminClient({
     load({ p: page.page, q, cat: categoryId, s: sort });
   };
 
+  // ============ 失效报告操作 ============
+
+  const reportedAllSelected =
+    reported.length > 0 && reported.every((s) => reportedSelected.has(s.id));
+
+  const toggleReportedAll = () => {
+    setReportedSelected((prev) => {
+      if (reportedAllSelected) return new Set();
+      const next = new Set(prev);
+      for (const s of reported) next.add(s.id);
+      return next;
+    });
+  };
+
+  const toggleReportedOne = (id: string) => {
+    setReportedSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  /** 清除失效报告（站点保留，误报场景） */
+  const clearReportOne = async (site: ReportedSite) => {
+    if (!window.confirm(`清除「${site.title}」的失效报告？\n站点保留（误报场景）。`)) return;
+    try {
+      const res = await fetch(`/api/admin/sites/${site.id}/reports`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      showToast("已清除失效报告");
+      void loadReported();
+    } catch {
+      showToast("清除失败，请稍后重试");
+    }
+  };
+
+  const clearReportBatch = async () => {
+    const ids = [...reportedSelected];
+    if (ids.length === 0) return;
+    if (!window.confirm(`清除选中的 ${ids.length} 个站点的失效报告？\n站点保留（误报场景）。`))
+      return;
+    try {
+      await Promise.all(
+        ids.map((id) => fetch(`/api/admin/sites/${id}/reports`, { method: "DELETE" }))
+      );
+      showToast(`已清除 ${ids.length} 个站点的失效报告`);
+      void loadReported();
+    } catch {
+      showToast("批量清除失败，请稍后重试");
+    }
+  };
+
+  /** 确认失效 → 移到垃圾箱 */
+  const deleteReportedOne = async (site: ReportedSite) => {
+    if (!window.confirm(`将「${site.title}」移到垃圾箱？\n可从垃圾箱恢复。`)) return;
+    try {
+      const res = await fetch(`/api/admin/sites/${site.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      showToast("已移到垃圾箱");
+      void loadReported();
+    } catch {
+      showToast("删除失败，请稍后重试");
+    }
+  };
+
+  const deleteReportedBatch = async () => {
+    const ids = [...reportedSelected];
+    if (ids.length === 0) return;
+    if (!window.confirm(`将选中的 ${ids.length} 个站点移到垃圾箱？\n可从垃圾箱恢复。`)) return;
+    try {
+      const res = await fetch(`/api/admin/sites?ids=${ids.join(",")}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      showToast(`已移动 ${ids.length} 个站点到垃圾箱`);
+      void loadReported();
+    } catch {
+      showToast("批量删除失败，请稍后重试");
+    }
+  };
+
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8 md:px-8">
       {/* 顶部条 */}
@@ -467,6 +579,22 @@ export default function AdminClient({
           }`}
         >
           站点管理
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("reports")}
+          className={`cursor-pointer border-b-2 px-3 py-2 text-sm transition-colors ${
+            tab === "reports"
+              ? "border-[var(--neutral-900)] font-medium text-[var(--foreground)]"
+              : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+          }`}
+        >
+          失效报告
+          {reported.length > 0 && (
+            <span className="ml-1.5 rounded-full bg-[var(--error)]/10 px-1.5 py-0.5 text-xs tabular-nums text-[var(--error)]">
+              {reported.length}
+            </span>
+          )}
         </button>
         <button
           type="button"
@@ -817,6 +945,167 @@ export default function AdminClient({
                             className="cursor-pointer rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"
                           >
                             永久删除
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* ============ 失效报告视图 ============ */}
+      {tab === "reports" && (
+        <>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <span className="text-sm text-[var(--foreground-secondary)]">
+              共 <span className="font-medium tabular-nums">{reported.length}</span>{" "}
+              个站点被报告失效
+            </span>
+            {reportedSelected.size > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={clearReportBatch}
+                  className="cursor-pointer rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-2 text-sm text-[var(--foreground-secondary)] hover:bg-[var(--muted)]"
+                >
+                  清除报告（{reportedSelected.size}）
+                </button>
+                <button
+                  type="button"
+                  onClick={deleteReportedBatch}
+                  className="cursor-pointer rounded-[var(--radius-md)] bg-[var(--error)] px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                >
+                  删除选中（{reportedSelected.size}）
+                </button>
+              </>
+            )}
+            <span className="ml-auto text-xs text-[var(--muted-foreground)]">
+              清除报告 = 误报恢复；删除 = 移到垃圾箱
+            </span>
+          </div>
+
+          <div className="card overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+                  <th className="w-10 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={reportedAllSelected}
+                      onChange={toggleReportedAll}
+                      aria-label="全选"
+                    />
+                  </th>
+                  <th className="px-3 py-2.5 font-medium">标题</th>
+                  <th className="px-3 py-2.5 font-medium">URL</th>
+                  <th className="px-3 py-2.5 font-medium">分类</th>
+                  <th className="px-3 py-2.5 text-center font-medium">报告数</th>
+                  <th className="px-3 py-2.5 font-medium">最近报告</th>
+                  <th className="px-3 py-2.5 text-right font-medium">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reported.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-3 py-12 text-center text-sm text-[var(--muted-foreground)]"
+                    >
+                      暂无失效报告
+                    </td>
+                  </tr>
+                ) : (
+                  reported.map((site) => (
+                    <tr
+                      key={site.id}
+                      className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--muted)]/40"
+                    >
+                      <td className="px-3 py-2.5">
+                        <input
+                          type="checkbox"
+                          checked={reportedSelected.has(site.id)}
+                          onChange={() => toggleReportedOne(site.id)}
+                          aria-label={`选择 ${site.title}`}
+                        />
+                      </td>
+                      <td className="max-w-[220px] px-3 py-2.5">
+                        <a
+                          href={site.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`${site.title}\n${site.url}`}
+                          className="flex items-center gap-2 font-medium text-[var(--foreground)] hover:text-[var(--accent-500)]"
+                        >
+                          <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded text-[10px]">
+                            {site.favicon ? (
+                              // eslint-disable-next-line @next/next/no-img-element -- 后台 favicon 轻量展示
+                              <img
+                                src={site.favicon}
+                                alt=""
+                                className="h-5 w-5 object-contain"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                                }}
+                              />
+                            ) : null}
+                          </span>
+                          <span className="truncate">{site.title}</span>
+                        </a>
+                        {site.description && (
+                          <p className="mt-0.5 max-w-[220px] truncate text-xs text-[var(--muted-foreground)]">
+                            {site.description}
+                          </p>
+                        )}
+                      </td>
+                      <td className="max-w-[240px] px-3 py-2.5">
+                        <a
+                          href={site.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block truncate text-[var(--accent-500)] hover:underline"
+                        >
+                          {site.url}
+                        </a>
+                      </td>
+                      <td className="px-3 py-2.5 text-[var(--foreground-secondary)]">
+                        {site.categoryName ?? "未知"}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <span className="rounded-full bg-[var(--error)]/10 px-2 py-0.5 text-xs font-medium tabular-nums text-[var(--error)]">
+                          {site.reportCount}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 tabular-nums text-[var(--muted-foreground)]">
+                        {formatTime(site.lastReportedAt)}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <a
+                            href={site.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="打开核验"
+                            className="rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground-secondary)] hover:bg-[var(--muted)]"
+                          >
+                            打开 ↗
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => clearReportOne(site)}
+                            className="cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground-secondary)] hover:bg-[var(--muted)]"
+                          >
+                            清除报告
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteReportedOne(site)}
+                            className="cursor-pointer rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"
+                          >
+                            删除
                           </button>
                         </div>
                       </td>
