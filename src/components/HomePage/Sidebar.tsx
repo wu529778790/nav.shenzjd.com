@@ -75,6 +75,8 @@ interface SidebarProps {
   activeCategoryId: string | null;
   /** 移动端：tree 全屏且叶子分类展开时内联显示站点链接（无右侧主区）2026-08-22 用户拍板 */
   showLeafSites?: boolean;
+  /** 分类导航回调（2026-08-24 零请求导航）：Link 的 onClick 拦截后调用，本地切换分类 */
+  onNavigate: (id: string) => void;
 }
 
 /** 计算节点下挂的站点总数（含子孙） */
@@ -115,6 +117,7 @@ function CategoryRow({
   activeCategoryId,
   expanded,
   onToggle,
+  onNavigate,
   showSites,
   topIndex,
 }: {
@@ -123,6 +126,8 @@ function CategoryRow({
   activeCategoryId: string | null;
   expanded: Set<string>;
   onToggle: (id: string) => void;
+  /** 分类导航回调（零请求本地切换） */
+  onNavigate: (id: string) => void;
   /** 是否展示站点叶子链接：PC 端右侧已展示 → false；移动端无右侧 → true */
   showSites: boolean;
   /** 顶级分类在顶级数组中的下标（0-based），depth===0 时用于按索引生成编号 */
@@ -165,6 +170,12 @@ function CategoryRow({
         <Link
           href={`/c/${node.id}`}
           title={node.name}
+          onClick={(e) => {
+            // 修饰键（新标签/新窗口）保持原生行为；普通左键走零请求本地切换
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            onNavigate(node.id);
+          }}
           className="flex min-w-0 flex-1 items-center gap-2 rounded-[var(--radius-xs)]"
         >
           <span
@@ -219,6 +230,7 @@ function CategoryRow({
               activeCategoryId={activeCategoryId}
               expanded={expanded}
               onToggle={onToggle}
+              onNavigate={onNavigate}
               showSites={showSites}
             />
           ))}
@@ -274,7 +286,12 @@ function SiteRow({
 
 /* ============ 主组件 ============ */
 
-export function Sidebar({ categories, activeCategoryId, showLeafSites = false }: SidebarProps) {
+export function Sidebar({
+  categories,
+  activeCategoryId,
+  showLeafSites = false,
+  onNavigate,
+}: SidebarProps) {
   // 展开状态：默认全部收起（仅显示顶级分类名称，点击再展开）
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
@@ -340,6 +357,7 @@ export function Sidebar({ categories, activeCategoryId, showLeafSites = false }:
           activeCategoryId={activeCategoryId}
           expanded={expanded}
           onToggle={toggle}
+          onNavigate={onNavigate}
           showSites={showSites}
           topIndex={idx}
         />
