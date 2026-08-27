@@ -32,7 +32,7 @@ export function AppHeader({ searchValue, onSearchChange, onLogoClick }: AppHeade
             onLogoClick?.();
           }}
           className="flex flex-shrink-0 items-center gap-2.5"
-          aria-label="神族九帝的收藏夹首页"
+          aria-label="导航森林首页"
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] bg-[var(--neutral-900)]">
             <svg
@@ -50,7 +50,7 @@ export function AppHeader({ searchValue, onSearchChange, onLogoClick }: AppHeade
             </svg>
           </span>
           <span className="text-lg font-bold tracking-tight text-[var(--foreground)]">
-            神族九帝的收藏夹
+            导航森林
           </span>
         </Link>
 

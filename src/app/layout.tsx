@@ -14,12 +14,12 @@ export const plusJakarta = localFont({
 
 export const metadata: Metadata = {
   title: {
-    default: "神族九帝的收藏夹",
-    template: "%s | 神族九帝的收藏夹",
+    default: "导航森林",
+    template: "%s | 导航森林",
   },
   description:
-    "神族九帝的收藏夹：个人导航书签聚合站，聚合影视、阅读、工具、AI、资源搜索等优质链接，支持全文搜索。",
-  keywords: ["导航", "书签", "收藏夹", "资源", "神族九帝", "bookmark", "navigation"],
+    "导航森林：个人导航书签聚合站，聚合影视、阅读、工具、AI、资源搜索等优质链接，支持全文搜索。",
+  keywords: ["导航森林", "导航", "书签", "收藏夹", "资源", "神族九帝", "bookmark", "navigation"],
   authors: [{ name: "神族九帝" }],
   creator: "神族九帝",
   metadataBase: new URL("https://navhub.shenzjd.com"),
@@ -27,14 +27,14 @@ export const metadata: Metadata = {
     type: "website",
     locale: "zh_CN",
     url: "https://navhub.shenzjd.com",
-    siteName: "神族九帝的收藏夹",
-    title: "神族九帝的收藏夹",
-    description: "聚合优质链接的个人导航站：影视、阅读、工具、AI、资源搜索。",
+    siteName: "导航森林",
+    title: "导航森林",
+    description: "导航森林：聚合影视、阅读、工具、AI、资源搜索等优质链接。",
   },
   twitter: {
     card: "summary_large_image",
-    title: "神族九帝的收藏夹",
-    description: "聚合优质链接的个人导航站：影视、阅读、工具、AI、资源搜索。",
+    title: "导航森林",
+    description: "导航森林：聚合影视、阅读、工具、AI、资源搜索等优质链接。",
   },
   robots: {
     index: true,
@@ -52,10 +52,10 @@ export const viewport: Viewport = {
 const websiteJsonLd = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  name: "神族九帝的收藏夹",
+  name: "导航森林",
   url: "https://navhub.shenzjd.com",
   description:
-    "神族九帝的收藏夹：个人导航书签聚合站，聚合影视、阅读、工具、AI、资源搜索等优质链接。",
+    "导航森林：个人导航书签聚合站，聚合影视、阅读、工具、AI、资源搜索等优质链接。",
   inLanguage: "zh-CN",
 };
 

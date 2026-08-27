@@ -49,7 +49,7 @@ async function loadCategory(
 /** 分类页 BreadcrumbList + ItemList 结构化数据 */
 function categoryJsonLd(node: Category, path: Category[]): string {
   const breadcrumbItems = [
-    { "@type": "ListItem", position: 1, name: "神族九帝的收藏夹", item: SITE_URL },
+    { "@type": "ListItem", position: 1, name: "导航森林", item: SITE_URL },
     ...path.map((c, i) => ({
       "@type": "ListItem",
       position: i + 2,

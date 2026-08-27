@@ -44,7 +44,7 @@ async function fetchFavicon(target: URL): Promise<Response> {
     {
       signal: AbortSignal.timeout(8000),
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; NavHubBot/1.0; +https://navhub.shenzjd.com)",
+        "User-Agent": "Mozilla/5.0 (compatible; NavForestBot/1.0; +https://navhub.shenzjd.com)",
         Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
       },

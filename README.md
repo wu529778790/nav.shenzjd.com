@@ -1,6 +1,6 @@
-# NavHub · 树形导航站
+# 导航森林
 
-> 一个纯展示型的个人导航站。书签数据来自 [阿虚同学的储物间](https://axutongxue.com) 等精选来源，以**树形分类**组织，服务端直读 **Turso (libsql)** 数据库，首屏 SSR 秒开。无登录、无编辑、无同步——数据由 `navdata` 工具链维护。
+> 导航森林——一个纯展示型的个人导航站。书签数据来自 [阿虚同学的储物间](https://axutongxue.com) 等精选来源，以**树形分类**组织，服务端直读 **Turso (libsql)** 数据库，首屏 SSR 秒开。无登录、无编辑、无同步——数据由 `navdata` 工具链维护。
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js) ![React](https://img.shields.io/badge/React-19-61dafb?logo=react) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript) ![Tailwind CSS v4](https://img.shields.io/badge/Tailwind_CSS-v4-38bdf8?logo=tailwindcss) ![Turso](https://img.shields.io/badge/Storage-Turso-7C3AED) ![License](https://img.shields.io/badge/License-MIT-green) ![CI](https://img.shields.io/github/actions/workflow/status/wu529778790/navhub.shenzjd.com/docker.yml)
 

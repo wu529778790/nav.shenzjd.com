@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A **pure read-only** personal navigation/bookmarks site ("NavHub") built with Next.js 16 App Router, React 19, and Tailwind CSS v4. Bookmarks are organized as a **tree** of categories sourced from 阿虚同学的储物间 (axutongxue) and served from a **Turso (libsql) database**. There is **no login, no editing, no deletion, and no client-side sync** — the data is maintained entirely by external `navdata` tooling and imported into Turso via scripts. The UI is a Vercel/Linear-style minimal monochrome design.
+A **pure read-only** personal navigation/bookmarks site ("导航森林") built with Next.js 16 App Router, React 19, and Tailwind CSS v4. Bookmarks are organized as a **tree** of categories sourced from 阿虚同学的储物间 (axutongxue) and served from a **Turso (libsql) database**. There is **no login, no editing, no deletion, and no client-side sync** — the data is maintained entirely by external `navdata` tooling and imported into Turso via scripts. The UI is a Vercel/Linear-style minimal monochrome design.
 
 ## Commands
 
