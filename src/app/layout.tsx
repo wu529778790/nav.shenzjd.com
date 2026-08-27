@@ -71,13 +71,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className={plusJakarta.variable}>
-      {/* 防闪烁：hydration 前应用主题（localStorage 优先，缺省跟随系统） */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `(function(){try{var t=localStorage.getItem("theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}document.documentElement.dataset.theme=t;}catch(e){document.documentElement.dataset.theme="light";}})();`,
-        }}
-      />
+    <html lang="zh-CN" className={plusJakarta.variable} suppressHydrationWarning>
+      <head>
+        {/* 防闪烁：hydration 前应用主题（localStorage 优先，缺省跟随系统）。
+            放在 <head> 内保证在 body 解析前执行，且让 Next.js 知道 script 顺序；
+            <html suppressHydrationWarning> 抑制 data-theme 在 SSR（无）与 hydration 前
+            （script 已设置）之间的已知差异，这是 Next.js 官方 dark-mode 方案。 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}document.documentElement.dataset.theme=t;}catch(e){document.documentElement.dataset.theme="light";}})();`,
+          }}
+        />
+      </head>
       <body className="antialiased">
         <script
           type="application/ld+json"
