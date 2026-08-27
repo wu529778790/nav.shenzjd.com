@@ -112,7 +112,7 @@ src/
     server/turso.ts      # Turso 数据层（树形读取/写入）
     runtime-policies.ts  # CSP 头构造
     favicon-url.ts, utils.ts (cn)
-scripts/                 # import-axutongxue, reset-tables, sync-standalone-assets, submit-sitemap
+scripts/                 # import-axutongxue, reset-tables, sync-standalone-assets
 ```
 
 ## 开发

@@ -49,7 +49,7 @@ page.tsx (SSR) → readNavData() reads Turso → filters tombstones → injects 
 - `src/lib/favicon-url.ts`, `src/lib/server/safe-external-fetch.ts` — favicon proxy helpers.
 - `src/lib/utils.ts` — `cn()` (clsx + tailwind-merge).
 - `src/data/sites.json` — committed seed fallback (used by sitemap; runtime data is in Turso).
-- `scripts/` — `import-axutongxue.mjs` (axutongxue → Turso tree import), `reset-tables.mjs` (rebuild tables), `sync-standalone-assets.mjs` (run after build), `submit-sitemap.mjs` (CI sitemap submission).
+- `scripts/` — `import-axutongxue.mjs` (axutongxue → Turso tree import), `reset-tables.mjs` (rebuild tables), `sync-standalone-assets.mjs` (run after build).
 
 ### Proxy & Security Headers
 
