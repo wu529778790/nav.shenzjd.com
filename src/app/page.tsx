@@ -4,11 +4,9 @@
  * 纯只读展示站：服务端直读 Turso 数据库 → 过滤墓碑 → SSR 注入 initialSites。
  * 首屏 HTML 即含真实书签（秒开），无客户端同步、无编辑。
  *
- * 静态化策略（2026-08-27 优化）：报失效状态已客户端化（/api/sites/dead-report-state），
- * 页面不再依赖 per-anon cookie → 改回 ISR（revalidate=21600），与分类页对齐。
- * 首次 build 期不连 Turso 会产出空壳，但运行时首次访问会触发 ISR 重建拿到真实数据，
- * 之后 6h 内全部走 Next 数据缓存 + CDN 边缘缓存，DB 读量降到接近 0。
- * （之前的 force-dynamic 让每个未命中 CDN 的请求都重新 SSR，DB 读放大；现已移除。）
+ * 静态化策略（2026-08-24 P0-2）：报失效状态已客户端化（/api/sites/dead-report-state），
+ * 页面不再依赖 per-anon cookie。页面保持动态渲染（见下方 dynamic 注释），
+ * CDN 缓存头由 src/proxy.ts 设置（s-maxage=21600），DB 读仍走进程内缓存（turso.ts）。
  *
  * SEO（2026-08-24）：首页展示默认（第一个）顶级分类，各分类独立页在 /c/[id]；
  * 树/子分类卡片均为可抓取链接，首页附带 ItemList 结构化数据。
@@ -21,11 +19,11 @@ import { visibleCategories } from "@/lib/nav-tree";
 import { stripTopPrefix } from "@/lib/format";
 import type { Category } from "@/types";
 
-// ISR（2026-08-27 改回）：与分类页对齐，6h 重建一次。
-// build 期不连 Turso 产出空壳 → 首次运行访问触发 revalidate 重建拿到真实数据，
-// 之后全部走 Next ISR 缓存 + CDN 缓存。数据写后靠 invalidateNavCache 主动失效，
-// 或重启容器立即重建。
-export const revalidate = 21600;
+// 动态渲染（2026-08-24 P0-2 修正）：不用 ISR/revalidate——
+// build 期（CI 无 Turso env）若预渲染首页会产出「空数据」壳并缓存。
+// 改为动态渲染（运行时读真实数据），CDN 缓存头由 src/proxy.ts 统一设置
+// （`public, s-maxage=21600`），效果与 ISR 等价（边缘缓存 + 浏览器不缓存）。
+export const dynamic = "force-dynamic";
 
 /** 首页 ItemList 结构化数据（默认分类的站点） */
 function homepageItemListJsonLd(categories: Category[]): string {
