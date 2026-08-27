@@ -21,12 +21,15 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 年
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1h
 const RATE_LIMIT_MAX = 30;
 
-/** 站点是否存在 */
+/**
+ * 站点是否存在（点查询，id 为主键，< 1ms）。
+ * 报失效是用户主动操作，频率远低于页面访问，此处直读 DB 的总次数有限，不必缓存。
+ */
 async function siteExists(siteId: string): Promise<boolean> {
   await ensureTables();
   const db = getClient();
   const rs = await db.execute({
-    sql: "SELECT id FROM sites WHERE id = ?",
+    sql: "SELECT 1 FROM sites WHERE id = ?",
     args: [siteId],
   });
   return rs.rows.length > 0;

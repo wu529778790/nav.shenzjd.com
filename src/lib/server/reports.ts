@@ -18,9 +18,12 @@ export interface ReportState {
   count: number;
 }
 
-/** 全站报告数缓存：TTL 兜底（5 分钟），报失效/取消/后台清除都会主动失效，TTL 仅防抖 */
+/** 全站报告数缓存：TTL 兜底（1 小时），报失效/取消/后台清除都会主动失效，TTL 仅防抖 */
 const REPORT_COUNTS_KEY = "reports:counts";
-const REPORT_COUNTS_TTL_MS = 5 * 60 * 1000;
+const REPORT_COUNTS_TTL_MS = 60 * 60 * 1000;
+
+/** 某 anon_id 的已报列表缓存：30s 兜底，写后主动失效；避免首页客户端轮询重复打 DB */
+const REPORTED_IDS_TTL_MS = 30 * 1000;
 
 /** 报告数变更方（addReport / removeReport / 后台清除）写库后主动失效 */
 export function invalidateReportCountsCache(): void {
@@ -48,15 +51,22 @@ async function getReportCountsUncached(): Promise<Map<string, number>> {
   return map;
 }
 
-/** 某 anon_id 已报失效的 site_id 列表 */
+/** 某 anon_id 已报失效的 site_id 列表（按 anonId 维度缓存 30s，避免短时间重复打 DB） */
 export async function getReportedSiteIds(anonId: string): Promise<string[]> {
-  await ensureTables();
-  const db = getClient();
-  const rs = await db.execute({
-    sql: "SELECT site_id FROM site_dead_reports WHERE anon_id = ?",
-    args: [anonId],
-  });
-  return rs.rows.map((r) => String(r.site_id));
+  const key = `reports:ids:${anonId}`;
+  return cacheGetOrLoad(
+    key,
+    async () => {
+      await ensureTables();
+      const db = getClient();
+      const rs = await db.execute({
+        sql: "SELECT site_id FROM site_dead_reports WHERE anon_id = ?",
+        args: [anonId],
+      });
+      return rs.rows.map((r) => String(r.site_id));
+    },
+    REPORTED_IDS_TTL_MS
+  );
 }
 
 /** 单站点报告数 */
@@ -90,6 +100,7 @@ export async function addReport(anonId: string, siteId: string): Promise<ReportS
     args: [siteId, anonId, Date.now()],
   });
   invalidateReportCountsCache();
+  cacheInvalidate(`reports:ids:${anonId}`);
   return { reported: true, count: await getReportCount(siteId) };
 }
 
@@ -102,5 +113,6 @@ export async function removeReport(anonId: string, siteId: string): Promise<Repo
     args: [siteId, anonId],
   });
   invalidateReportCountsCache();
+  cacheInvalidate(`reports:ids:${anonId}`);
   return { reported: false, count: await getReportCount(siteId) };
 }
