@@ -14,6 +14,7 @@
 
 import { readNavData } from "@/lib/server/turso";
 import { getReportCounts } from "@/lib/server/reports";
+import { getLikeCounts } from "@/lib/server/likes";
 import HomeClient from "@/components/HomePage/HomeClient";
 import { visibleCategories } from "@/lib/nav-tree";
 import { stripTopPrefix } from "@/lib/format";
@@ -63,6 +64,14 @@ export default async function Page() {
     console.error("SSR 读取失效标注失败，降级为空:", error);
   }
 
+  // 点赞数（全局聚合，非个性化，可随 ISR 缓存；用户已赞状态由客户端拉取）
+  let initialLikeCounts: Record<string, number> = {};
+  try {
+    initialLikeCounts = Object.fromEntries(await getLikeCounts());
+  } catch (error) {
+    console.error("SSR 读取点赞数失败，降级为空:", error);
+  }
+
   const itemListJson = homepageItemListJsonLd(initialSites);
 
   return (
@@ -73,6 +82,7 @@ export default async function Page() {
       <HomeClient
         initialSites={initialSites}
         initialReportCounts={initialReportCounts}
+        initialLikeCounts={initialLikeCounts}
       />
     </>
   );

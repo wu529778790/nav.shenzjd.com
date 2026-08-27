@@ -15,6 +15,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { readNavData } from "@/lib/server/turso";
 import { getReportCounts } from "@/lib/server/reports";
+import { getLikeCounts } from "@/lib/server/likes";
 import { findNode, findPath, countDescendantSites, visibleCategories } from "@/lib/nav-tree";
 import { stripTopPrefix } from "@/lib/format";
 import HomeClient from "@/components/HomePage/HomeClient";
@@ -108,6 +109,14 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
     console.error("分类页读取失效标注失败，降级为空:", error);
   }
 
+  // 点赞数（全局聚合，可随 ISR 缓存；用户已赞状态由客户端拉取）
+  let initialLikeCounts: Record<string, number> = {};
+  try {
+    initialLikeCounts = Object.fromEntries(await getLikeCounts());
+  } catch (error) {
+    console.error("分类页读取点赞数失败，降级为空:", error);
+  }
+
   const path = findPath(categories, id);
   const jsonLd = categoryJsonLd(node, path);
 
@@ -118,6 +127,7 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
         initialSites={categories}
         initialActiveCategoryId={id}
         initialReportCounts={initialReportCounts}
+        initialLikeCounts={initialLikeCounts}
       />
     </>
   );

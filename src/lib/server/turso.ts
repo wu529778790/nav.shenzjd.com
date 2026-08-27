@@ -76,10 +76,18 @@ const CREATE_TABLES: string[] = [
     created_at INTEGER NOT NULL,
     UNIQUE(site_id, anon_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS site_likes (
+    site_id TEXT NOT NULL,
+    anon_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(site_id, anon_id)
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_sites_category ON sites(category_id)`,
   `CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id)`,
   `CREATE INDEX IF NOT EXISTS idx_site_dead_reports_site ON site_dead_reports(site_id)`,
   `CREATE INDEX IF NOT EXISTS idx_site_dead_reports_anon ON site_dead_reports(anon_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_site_likes_site ON site_likes(site_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_site_likes_anon ON site_likes(anon_id)`,
 ];
 
 let tablesReady: Promise<void> | null = null;
