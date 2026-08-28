@@ -11,6 +11,7 @@
 
 import type { MetadataRoute } from "next";
 import { readNavData } from "@/lib/server/turso";
+import { safeDate } from "@/lib/safe-date";
 import { visibleCategories } from "@/lib/nav-tree";
 import seed from "@/data/sites.json";
 import type { Category } from "@/types";
@@ -48,7 +49,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const c of cats) {
       entries.push({
         url: `${SITE_URL}/c/${c.id}`,
-        lastModified: c.updatedAt ? new Date(c.updatedAt) : new Date(),
+        lastModified: safeDate(c.updatedAt),
         changeFrequency: "daily",
         priority: 0.7,
       });
